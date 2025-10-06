@@ -24,27 +24,11 @@ fn main() {
 		.add_plugins(FrameTimeDiagnosticsPlugin::default())
 		.add_plugins(particles::ParticlePlugin)
 		.add_observer(do_very_specific_thing_to_object)
-		.insert_resource(GreetTimer(Timer::from_seconds(2.0, TimerMode::Repeating)))
 		.add_systems(Startup, startup)
 		.add_systems(Startup, spawn_animated_gltf)
 		.add_systems(Update, (update_camera, update_animation).chain())
-		//.add_systems(Update, (update_people, greet_people, log_scene_hierarchy).chain())
+		//.add_systems(Update, log_scene_hierarchy)
 		.run();
-}
-
-#[derive(Component)]
-struct Person;
-
-#[derive(Component)]
-struct Name(String);
-
-#[derive(Resource)]
-struct GreetTimer(Timer);
-
-fn add_people(mut commands: Commands) {
-	commands.spawn((Person, Name("Elaina Proctor".to_string())));
-	commands.spawn((Person, Name("Renzo Hume".to_string())));
-	commands.spawn((Person, Name("Zayna Nieves".to_string())));
 }
 
 fn startup(
@@ -100,8 +84,6 @@ fn startup(
 		})
 		.take(10),
 	);
-	
-	add_people(commands);
 }
 
 #[derive(Component)]
@@ -132,23 +114,6 @@ fn do_very_specific_thing_to_object(scene_ready: On<SceneInstanceReady>,
 	}
 }
 
-fn greet_people(time: Res<Time>, mut timer: ResMut<GreetTimer>, query: Query<&Name, With<Person>>) {
-	if timer.0.tick(time.delta()).just_finished() {
-		for name in &query {
-			println!("hello {}!", name.0);
-		}
-	}
-}
-
-fn update_people(mut query: Query<&mut Name, With<Person>>) {
-	for mut name in &mut query {
-		if name.0 == "Elaina Proctor" {
-			name.0 = "Elaina Hume".to_string();
-			break; // We don't need to change any other names.
-		}
-	}
-}
-
 fn update_camera(time: Res<Time>, mut query: Query<&mut Transform, With<Camera3d>>) {
 	for mut transf in &mut query {
 		transf.rotate_around(Vec3::ZERO, Quat::from_rotation_y(1.0*time.delta_secs()));
@@ -169,6 +134,9 @@ fn update_animation(
 			Quat::from_rotation_z(FRAC_PI_2 * ops::sin(time.elapsed_secs()*3.0));
 	}
 }
+
+#[derive(Component)]
+struct Name(String);
 
 fn _log_entity_tree (world: &World, entity: Entity, ident: &str, indent2: &str) {
 	let entity_ref = world.entity(entity);

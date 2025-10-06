@@ -8,12 +8,11 @@ pub struct ParticlePlugin;
 impl Plugin for ParticlePlugin {
 	fn build(&self, app: &mut App) {
 		app
-			.add_systems(Startup, setup_assets)
+			.add_systems(Startup, setup_data)
 			.add_systems(Update, spawn_particles)
 			.add_systems(Update, update_particles.after(spawn_particles));
 	}
 }
-
 
 #[derive(Resource)]
 struct ParticleSystem {
@@ -21,7 +20,7 @@ struct ParticleSystem {
 	material: Handle<StandardMaterial>,
 	rng: ChaCha8Rng,
 }
-fn setup_assets (
+fn setup_data (
 	mut commands: Commands,
 	mut meshes: ResMut<Assets<Mesh>>,
 	mut materials: ResMut<Assets<StandardMaterial>>
@@ -29,7 +28,7 @@ fn setup_assets (
 	let mesh = meshes.add(Cuboid::new(0.1, 0.1, 0.1));
 	let material = materials.add(Color::srgb_u8(60, 255, 70));
 	
-	let mut rng = ChaCha8Rng::seed_from_u64(19878367467711);
+	let rng = ChaCha8Rng::seed_from_u64(19878367467711);
 	
 	commands.insert_resource(ParticleSystem{ mesh, material, rng });
 }
@@ -58,7 +57,7 @@ fn spawn_particles(
 		mut sys: ResMut<ParticleSystem>,
 		mut commands: Commands) {
 	let emit_speed: f32 = 7.0;
-	let speed_variation: f32 = 2.0;
+	let speed_variation: f32 = 1.0;
 	
 	for (mut spawner, transform) in spawners {
 		spawner.time_since_last_spawn += time.delta_secs();
