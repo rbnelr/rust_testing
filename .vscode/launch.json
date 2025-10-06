@@ -13,7 +13,8 @@
 				"args": [
 					"build",
 					"--bin=rust_bevy_test",
-					"--package=rust_bevy_test"
+					"--package=rust_bevy_test",
+					"--features", "bevy/dynamic_linking",
 				],
 				"filter": {
 					"name": "rust_bevy_test",

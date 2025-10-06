@@ -1,9 +1,16 @@
 use bevy::{
-	ecs::query::{QueryFilter}, math::*, prelude::*, render::{mesh::skinning::SkinnedMesh, *},
+	prelude::*,
+	render::*,
+	ecs::query::{QueryFilter},
+	//math::*,
+	scene::SceneInstanceReady,
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::{f32::consts::*};
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
+
+mod particles;
 
 fn main() {
 	App::new()
@@ -14,9 +21,14 @@ fn main() {
 			}),
 			..default()
 		}))
+		.add_plugins(FrameTimeDiagnosticsPlugin::default())
+		.add_plugins(particles::ParticlePlugin)
+		.add_observer(do_very_specific_thing_to_object)
 		.insert_resource(GreetTimer(Timer::from_seconds(2.0, TimerMode::Repeating)))
 		.add_systems(Startup, startup)
-		.add_systems(Update, (update_camera, log_scene_hierarchy, update_animation, update_people, greet_people).chain())
+		.add_systems(Startup, spawn_animated_gltf)
+		.add_systems(Update, (update_camera, update_animation).chain())
+		//.add_systems(Update, (update_people, greet_people, log_scene_hierarchy).chain())
 		.run();
 }
 
@@ -36,21 +48,18 @@ fn add_people(mut commands: Commands) {
 }
 
 fn startup(
-		mut commands: Commands,
-		mut meshes: ResMut<Assets<Mesh>>,
-		mut materials: ResMut<Assets<StandardMaterial>>,
-		asset_server: Res<AssetServer>
+	mut commands: Commands,
+	mut meshes: ResMut<Assets<Mesh>>,
+	mut materials: ResMut<Assets<StandardMaterial>>
 ) {
 	// camera
 	commands.spawn((
 		Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
 		Camera3d::default(),
-		Camera {
-			hdr: true,
-			..default()
-		},
+		Camera::default(),
+		bevy::render::view::Hdr,
 		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
-		bevy::core_pipeline::bloom::Bloom::NATURAL,
+		bevy::post_process::bloom::Bloom::NATURAL,
 		Name("Camera".to_string())
 	));
 	
@@ -92,10 +101,35 @@ fn startup(
 		.take(10),
 	);
 	
-	//
-	commands.spawn(SceneRoot(asset_server.load("rig.gltf#Scene0")));
-	
 	add_people(commands);
+}
+
+#[derive(Component)]
+struct ThisVerySpecificObject();
+
+fn spawn_animated_gltf(mut commands: Commands, asset_server: Res<AssetServer>) {
+	commands.spawn((
+		SceneRoot(asset_server.load("rig.glb#Scene0")),
+		ThisVerySpecificObject()
+	));
+}
+fn do_very_specific_thing_to_object(scene_ready: On<SceneInstanceReady>,
+		q_children: Query<&Children>,
+		mut q_skinned_mesh: Query<(&bevy::mesh::skinning::SkinnedMesh, &mut MeshMaterial3d<StandardMaterial>)>,
+		mut materials: ResMut<Assets<StandardMaterial>>,
+		mut commands: Commands) {
+	let material = materials.add(Color::srgb_u8(255, 144, 50));
+	
+	let scene_root = scene_ready.entity;
+	for entity in q_children.iter_descendants(scene_root) {
+		if let Ok((skinned_mesh, mut mat)) = q_skinned_mesh.get_mut(entity) {
+			*mat = MeshMaterial3d(material.clone());
+			
+			commands.entity(skinned_mesh.joints[2]).insert(
+				particles::ParticleEmitter::new(0.2)
+			);
+		}
+	}
 }
 
 fn greet_people(time: Res<Time>, mut timer: ResMut<GreetTimer>, query: Query<&Name, With<Person>>) {
@@ -123,7 +157,7 @@ fn update_camera(time: Res<Time>, mut query: Query<&mut Transform, With<Camera3d
 
 fn update_animation(
 	time: Res<Time>,
-	animated_entities: Query<&SkinnedMesh>,
+	animated_entities: Query<&bevy::mesh::skinning::SkinnedMesh>,
 	mut transform_query: Query<&mut Transform>,
 ) {
 	for animated in &animated_entities {
@@ -136,10 +170,10 @@ fn update_animation(
 	}
 }
 
-fn _log_entity_tree (world: &World, entity: Entity, print_components: &Vec<&'static str>, ident: &str, indent2: &str) {
+fn _log_entity_tree (world: &World, entity: Entity, ident: &str, indent2: &str) {
 	let entity_ref = world.entity(entity);
-	let all_component_names = entity_ref.archetype().components()
-		.map(|component_id| world.components().get_info(component_id).unwrap().name().split("::").last().unwrap().to_string())
+	let all_component_names = entity_ref.archetype().components().into_iter()
+		.map(|component_id| world.components().get_info(*component_id).unwrap().name().split("::").last().unwrap().to_string())
 		.collect::<Vec<String>>().join(", ");
 		
 	if let Some(name) = world.get::<Name>(entity) {
@@ -149,7 +183,7 @@ fn _log_entity_tree (world: &World, entity: Entity, print_components: &Vec<&'sta
 	}
 	
 	// No idea how to implement this generically
-	if let Some(skinned_mesh) = world.get::<SkinnedMesh>(entity) {
+	if let Some(skinned_mesh) = world.get::<bevy::mesh::skinning::SkinnedMesh>(entity) {
 		println!("{indent2}  SkinnedMesh: {:?}", skinned_mesh);
 	}
 	
@@ -160,19 +194,19 @@ fn _log_entity_tree (world: &World, entity: Entity, print_components: &Vec<&'sta
 			let indent  = format!("{}{}", indent2, (if i==last {"└─"} else {"├─"}));
 			let indent2 = format!("{}{}", indent2, (if i==last {"  "} else {"│ "}));
 			
-			_log_entity_tree(world, child, print_components, indent.as_str(), indent2.as_str());
+			_log_entity_tree(world, child, indent.as_str(), indent2.as_str());
 		}
 	}
 }
-fn log_entity_trees<F: QueryFilter> (world: &World, root_entities: Query<Entity, F>, print_components: &Vec<&'static str>) {
+fn log_entity_trees<F: QueryFilter> (world: &World, root_entities: Query<Entity, F>) {
 	for entity in &root_entities {
 		if world.get::<ChildOf>(entity).is_none() {
-			//_log_entity_tree(world, entity, print_components, "", "");
+			_log_entity_tree(world, entity, "", "");
 		}
 	}
 }
 
 fn log_scene_hierarchy (world: &World, query: Query<Entity>) {
-	log_entity_trees(world, query, &vec!["SkinnedMesh"]);
+	log_entity_trees(world, query);
 	//println!("------------------------");
 }
