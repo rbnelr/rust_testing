@@ -4,18 +4,27 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.17.2", features = ["dynamic_linking"] }
-bevy_dylib = { version = "0.17.0-rc.2" }
+#bevy = { version = "0.17.2", features = ["bevy_dev_tools"] }
+bevy = { version = "0.17.2", features = ["dynamic_linking", "bevy_dev_tools"] }
+#bevy_mod_imgui = "0.7.2"
+bevy_mod_imgui = { git = "https://github.com/jbrd/bevy_mod_imgui", branch = "main" } # 0.8 needed for bevy 0.17 but not yet in crates.io ?
 rand = "0.9.2"
 rand_chacha = "0.9.0"
 
+# Not actually working?
+#[dev-dependencies]
+#bevy = { version = "0.17.2", features = ["dynamic_linking", "bevy_dev_tools"] }
+
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
-opt-level = 1
+opt-level = 0
+#opt-level = 3
+#debug = 1
 
 # Enable a large amount of optimization in the dev profile for dependencies.
 [profile.dev.package."*"]
 opt-level = 3
+debug = 1 # Shrink insanely huge pdb a bit?
 
 # Enable more optimization in the release profile at the cost of compile time.
 [profile.release]

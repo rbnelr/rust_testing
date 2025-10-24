@@ -13,41 +13,45 @@
 				"args": [
 					"build",
 					"--bin=rust_bevy_test",
-					"--package=rust_bevy_test",
-					"--features", "bevy/dynamic_linking",
+					//"--package=rust_bevy_test"
 				],
-				"filter": {
-					"name": "rust_bevy_test",
-					"kind": "bin"
-				}
+				//"filter": {
+				//	"name": "rust_bevy_test",
+				//	"kind": "bin"
+				//}
 			},
+			"program": "${workspaceFolder}/target/debug/rust_bevy_test.exe",
 			"args": [],
 			"cwd": "${workspaceFolder}",
+			"sourceLanguages": ["rust"],
 			"env": {
-				"CARGO_MANIFEST_DIR": "${workspaceFolder}"
+				"PATH": "${env:USERPROFILE}/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin;${workspaceFolder}/target/debug/deps;${env:PATH}",
+				//"CARGO_MANIFEST_DIR": "${workspaceFolder}",
 			},
+			"terminal": "integrated"
 		},
-		{
-			"type": "lldb",
-			"request": "launch",
-			"name": "Debug unit tests in executable 'rust_bevy_test'",
-			"cargo": {
-				"args": [
-					"test",
-					"--no-run",
-					"--bin=rust_bevy_test",
-					"--package=rust_bevy_test"
-				],
-				"filter": {
-					"name": "rust_bevy_test",
-					"kind": "bin"
-				}
-			},
-			"args": [],
-			"cwd": "${workspaceFolder}",
-			"env": {
-				"CARGO_MANIFEST_DIR": "${workspaceFolder}"
-			},
-		}
+		//{
+		//	"type": "lldb",
+		//	"request": "launch",
+		//	"name": "Debug unit tests in executable 'rust_bevy_test'",
+		//	"cargo": {
+		//		"args": [
+		//			"test",
+		//			"--no-run",
+		//			"--bin=rust_bevy_test",
+		//			"--package=rust_bevy_test"
+		//		],
+		//		"filter": {
+		//			"name": "rust_bevy_test",
+		//			"kind": "bin"
+		//		}
+		//	},
+		//	"args": [],
+		//	"cwd": "${workspaceFolder}",
+		//	"env": {
+		//		"CARGO_MANIFEST_DIR": "${workspaceFolder}"
+		//	},
+		//	"terminal": "integrated"
+		//}
 	]
 }

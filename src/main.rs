@@ -1,50 +1,152 @@
+#![allow(unused)]
+
 use bevy::{
 	prelude::*,
 	render::*,
 	ecs::query::{QueryFilter},
 	//math::*,
 	scene::SceneInstanceReady,
+	dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
+	camera::Viewport,
+	//diagnostic::*,
+	//text::FontSmoothing,
 };
+//use bevy::dev_tools::*;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use std::{f32::consts::*};
-use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
+use std::{f32::consts::*, env};
 
 mod particles;
+mod flycam;
+mod imgui;
 
 fn main() {
+	
+	let asset_path = env::current_dir().unwrap()
+		.join("assets")
+		.to_string_lossy().to_string();
+		
+	println!("Current working directory: {:?}", std::env::current_dir().unwrap());
+	println!("Exe path: {:?}", std::env::current_exe().unwrap());
+	println!("Asset path: {:?}", asset_path);
+	
 	App::new()
-		.add_plugins(DefaultPlugins.set(RenderPlugin {
-			render_creation: settings::RenderCreation::Automatic(settings::WgpuSettings {
-				backends: Some(settings::Backends::DX12),
+		.add_plugins(DefaultPlugins
+			.set(RenderPlugin {
+				render_creation: settings::RenderCreation::Automatic(settings::WgpuSettings {
+					backends: Some(settings::Backends::DX12),
+					..default()
+				}),
 				..default()
-			}),
-			..default()
-		}))
-		.add_plugins(FrameTimeDiagnosticsPlugin::default())
+			})
+			.set(AssetPlugin {
+				file_path: asset_path,
+				..default()
+			})
+		)
+		.add_plugins(imgui::ImguiPlugin)
+		
+		//.add_plugins(FrameTimeDiagnosticsPlugin::default())
+		//.add_plugins(LogDiagnosticsPlugin::default())
+		.add_plugins(FpsOverlayPlugin {
+			config: FpsOverlayConfig {
+				text_config: TextFont {
+					font_size: 20.0,
+					..default()
+				},
+				refresh_interval: core::time::Duration::from_millis(100),
+				enabled: true,
+				frame_time_graph_config: FrameTimeGraphConfig {
+					enabled: true,
+					min_fps: 30.0,
+					target_fps: 144.0,
+				},
+				..default()
+			},
+		})
+		
+		.add_systems(Update, splitscreen_demo)
 		.add_plugins(particles::ParticlePlugin)
+		.add_plugins(flycam::FlycamPlugin)
 		.add_observer(do_very_specific_thing_to_object)
 		.add_systems(Startup, startup)
 		.add_systems(Startup, spawn_animated_gltf)
-		.add_systems(Update, (update_camera, update_animation).chain())
-		//.add_systems(Update, log_scene_hierarchy)
+		.add_systems(Update, (/*spin_camera,*/ update_animation).chain())
+		//.add_systems(Update, _log_scene_hierarchy)
 		.run();
 }
 
+fn splitscreen_demo(cameras: Query<(&mut Camera, &mut flycam::Flycam)>, window: Single<&Window>) {
+	let x1 = window.physical_width() / 2;
+	let x2 = window.physical_width();
+	
+	let controls_side = if window.cursor_position().unwrap_or_default().x >= x1 as f32 { 1 } else { 0 };
+	
+	for (mut cam, mut flycam) in cameras {
+		if cam.order == 0 {
+			cam.viewport = Some(Viewport {
+				physical_position: uvec2(0, 0),
+				physical_size: uvec2(x1, window.physical_height()),
+				..default()
+			});
+		}
+		else {
+			cam.viewport = Some(Viewport {
+				physical_position: uvec2(x1, 0),
+				physical_size: uvec2(x2 - x1, window.physical_height()),
+				..default()
+			});
+		}
+		
+		flycam.controls_active = controls_side == cam.order;
+	}
+}
 fn startup(
 	mut commands: Commands,
 	mut meshes: ResMut<Assets<Mesh>>,
 	mut materials: ResMut<Assets<StandardMaterial>>
 ) {
+	
+	let mut rng = ChaCha8Rng::seed_from_u64(19878367467713);
+	let cube_mesh = meshes.add(Cuboid::new(0.5, 0.5, 0.5));
+	let blue = materials.add(Color::srgb_u8(124, 144, 255));
+	let red = materials.add(Color::srgb_u8(255, 144, 124));
+	
 	// camera
+	//commands.spawn((
+	//	Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+	//	Camera3d::default(),
+	//	Camera::default(),
+	//	bevy::render::view::Hdr,
+	//	bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
+	//	bevy::post_process::bloom::Bloom::NATURAL,
+	//	Name("Camera".to_string())
+	//));
 	commands.spawn((
-		Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-		Camera3d::default(),
-		Camera::default(),
+		flycam::Flycam::new( Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
+		Camera{
+			order: 0,
+			..default()
+		},
 		bevy::render::view::Hdr,
 		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
 		bevy::post_process::bloom::Bloom::NATURAL,
+			Mesh3d(cube_mesh.clone()),
+			MeshMaterial3d(red.clone()), // just for debugging
 		Name("Camera".to_string())
+	));
+	commands.spawn((
+		flycam::Flycam::new( Transform::from_xyz(2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
+		Camera{
+			order: 1,
+			..default()
+		},
+		bevy::render::view::Hdr,
+		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
+		bevy::post_process::bloom::Bloom::NATURAL,
+			Mesh3d(cube_mesh.clone()),
+			MeshMaterial3d(red.clone()), // just for debugging
+		Name("Camera2".to_string())
 	));
 	
 	// light
@@ -64,10 +166,6 @@ fn startup(
 		MeshMaterial3d(materials.add(Color::WHITE)),
 		Name("Ground Plane".to_string())
 	));
-	
-	let mut rng = ChaCha8Rng::seed_from_u64(19878367467713);
-	let cube_mesh = meshes.add(Cuboid::new(0.5, 0.5, 0.5));
-	let blue = materials.add(Color::srgb_u8(124, 144, 255));
 
 	commands.spawn_batch(
 		std::iter::repeat_with(move || {
@@ -114,7 +212,7 @@ fn do_very_specific_thing_to_object(scene_ready: On<SceneInstanceReady>,
 	}
 }
 
-fn update_camera(time: Res<Time>, mut query: Query<&mut Transform, With<Camera3d>>) {
+fn spin_camera(time: Res<Time>, mut query: Query<&mut Transform, With<Camera3d>>) {
 	for mut transf in &mut query {
 		transf.rotate_around(Vec3::ZERO, Quat::from_rotation_y(1.0*time.delta_secs()));
 	}
@@ -166,7 +264,7 @@ fn _log_entity_tree (world: &World, entity: Entity, ident: &str, indent2: &str) 
 		}
 	}
 }
-fn log_entity_trees<F: QueryFilter> (world: &World, root_entities: Query<Entity, F>) {
+fn _log_entity_trees<F: QueryFilter> (world: &World, root_entities: Query<Entity, F>) {
 	for entity in &root_entities {
 		if world.get::<ChildOf>(entity).is_none() {
 			_log_entity_tree(world, entity, "", "");
@@ -174,7 +272,7 @@ fn log_entity_trees<F: QueryFilter> (world: &World, root_entities: Query<Entity,
 	}
 }
 
-fn log_scene_hierarchy (world: &World, query: Query<Entity>) {
-	log_entity_trees(world, query);
+fn _log_scene_hierarchy (world: &World, query: Query<Entity>) {
+	_log_entity_trees(world, query);
 	//println!("------------------------");
 }
