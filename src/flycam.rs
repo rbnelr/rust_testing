@@ -22,8 +22,6 @@ const MOUSELOOK_BTN : MouseButton = MouseButton::Middle;
 #[derive(Component)]
 #[require(Transform, Camera3d, Camera)]
 pub struct Flycam {
-	pub controls_active : bool,
-	
 	pub move_planar : bool,
 	pub vfov_multiplied_sensitivity : bool,
 	pub mouse_sens : f32,
@@ -53,8 +51,6 @@ impl Flycam {
 				..default()
 			}),
 			Flycam {
-				controls_active: true,
-				
 				move_planar: true,
 				vfov_multiplied_sensitivity: true,
 				// if vfov_multiplied_sensitivity == false:
@@ -271,12 +267,10 @@ fn update_camera(
 	handle_cursor(&keyboard, &mouse, &window, &mut cursor_opt, &mut cursor_icon);
 	
 	for (mut transf, mut flycam, mut proj) in &mut query {
-		if flycam.controls_active {
-			zoom(&time, &keyboard, &mut mouse_wheel, &mut flycam, proj.as_mut());
-			mouselook(&time, &keyboard, &mouse, &mut mouse_motion, &cursor_opt, &mut transf, &mut flycam, &proj);
-			movement(&time, &keyboard, &mut transf, &mut flycam);
-			// NOTE: controlling multiple cameras currently does not work since MessageReaders eat input
-		}
+		zoom(&time, &keyboard, &mut mouse_wheel, &mut flycam, proj.as_mut());
+		mouselook(&time, &keyboard, &mouse, &mut mouse_motion, &cursor_opt, &mut transf, &mut flycam, &proj);
+		movement(&time, &keyboard, &mut transf, &mut flycam);
+		// NOTE: controlling multiple cameras does not work since MessageReaders eat input
 	}
 }
 

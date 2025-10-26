@@ -2,12 +2,13 @@
 
 use bevy::{
 	prelude::*,
-	render::*,
 	ecs::query::{QueryFilter},
-	//math::*,
-	scene::SceneInstanceReady,
+	ecs::schedule::{ScheduleBuildSettings, LogLevel},
 	dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
+	render::*,
 	camera::Viewport,
+	scene::SceneInstanceReady,
+	//math::*,
 	//diagnostic::*,
 	//text::FontSmoothing,
 };
@@ -16,9 +17,10 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::{f32::consts::*, env};
 
-mod particles;
+//mod debug_camera;
 mod flycam;
 mod imgui;
+mod particles;
 
 fn main() {
 	
@@ -26,12 +28,17 @@ fn main() {
 		.join("assets")
 		.to_string_lossy().to_string();
 		
-	println!("Current working directory: {:?}", std::env::current_dir().unwrap());
+	println!("Working directory: {:?}", std::env::current_dir().unwrap());
 	println!("Exe path: {:?}", std::env::current_exe().unwrap());
 	println!("Asset path: {:?}", asset_path);
 	
-	App::new()
-		.add_plugins(DefaultPlugins
+	let mut app = App::new();
+	app.configure_schedules(ScheduleBuildSettings {
+		ambiguity_detection: LogLevel::Error,
+		..default()
+	});
+
+	app.add_plugins(DefaultPlugins
 			.set(RenderPlugin {
 				render_creation: settings::RenderCreation::Automatic(settings::WgpuSettings {
 					backends: Some(settings::Backends::DX12),
@@ -44,30 +51,30 @@ fn main() {
 				..default()
 			})
 		)
+		//.insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities) // Does not seem to exists, how do I schedule plugins correctly to avoid 1 frame latency?
 		.add_plugins(imgui::ImguiPlugin)
+		//.add_plugins((flycam::DebugCameraPlugin, flycam::FlycamPlugin).chain())
+		.add_plugins(particles::ParticlePlugin)
 		
 		//.add_plugins(FrameTimeDiagnosticsPlugin::default())
 		//.add_plugins(LogDiagnosticsPlugin::default())
-		.add_plugins(FpsOverlayPlugin {
-			config: FpsOverlayConfig {
-				text_config: TextFont {
-					font_size: 20.0,
-					..default()
-				},
-				refresh_interval: core::time::Duration::from_millis(100),
-				enabled: true,
-				frame_time_graph_config: FrameTimeGraphConfig {
-					enabled: true,
-					min_fps: 30.0,
-					target_fps: 144.0,
-				},
-				..default()
-			},
-		})
-		
-		.add_systems(Update, splitscreen_demo)
-		.add_plugins(particles::ParticlePlugin)
-		.add_plugins(flycam::FlycamPlugin)
+		//.add_plugins(FpsOverlayPlugin {
+		//	config: FpsOverlayConfig {
+		//		text_config: TextFont {
+		//			font_size: 20.0,
+		//			..default()
+		//		},
+		//		refresh_interval: core::time::Duration::from_millis(100),
+		//		enabled: true,
+		//		frame_time_graph_config: FrameTimeGraphConfig {
+		//			enabled: true,
+		//			min_fps: 30.0,
+		//			target_fps: 144.0,
+		//		},
+		//		..default()
+		//	},
+		//})
+
 		.add_observer(do_very_specific_thing_to_object)
 		.add_systems(Startup, startup)
 		.add_systems(Startup, spawn_animated_gltf)
@@ -76,31 +83,6 @@ fn main() {
 		.run();
 }
 
-fn splitscreen_demo(cameras: Query<(&mut Camera, &mut flycam::Flycam)>, window: Single<&Window>) {
-	let x1 = window.physical_width() / 2;
-	let x2 = window.physical_width();
-	
-	let controls_side = if window.cursor_position().unwrap_or_default().x >= x1 as f32 { 1 } else { 0 };
-	
-	for (mut cam, mut flycam) in cameras {
-		if cam.order == 0 {
-			cam.viewport = Some(Viewport {
-				physical_position: uvec2(0, 0),
-				physical_size: uvec2(x1, window.physical_height()),
-				..default()
-			});
-		}
-		else {
-			cam.viewport = Some(Viewport {
-				physical_position: uvec2(x1, 0),
-				physical_size: uvec2(x2 - x1, window.physical_height()),
-				..default()
-			});
-		}
-		
-		flycam.controls_active = controls_side == cam.order;
-	}
-}
 fn startup(
 	mut commands: Commands,
 	mut meshes: ResMut<Assets<Mesh>>,
