@@ -1,7 +1,11 @@
 use core::f32;
-
+use bevy::color::Color::Srgba;
+use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
+use bevy::window::{CursorIcon, CursorOptions, PrimaryWindow, WindowMode};
 use bevy_mod_imgui::prelude::*;
+use bevy::window::*;
+use crate::flycam::Flycam;
 
 pub struct ImguiPlugin;
 
@@ -15,7 +19,7 @@ impl Plugin for ImguiPlugin {
 				font_oversample_v: 2,
 				..default()
 			})
-			.add_systems(Update, imgui_main_ui);
+			.add_systems(Update, (imgui_main_ui, window_key_actions));
 	}
 }
 
@@ -29,11 +33,11 @@ struct ImguiState {
 	frametimes_avg_rate : Timer,
 	frametime_avg : FrametimeAvg,
 }
-
 impl Default for ImguiState {
 	fn default() -> Self {
 		Self{
-			demo_window_open: true,
+			demo_window_open: false,
+			
 			frametimes: vec![0.0; 120],
 			frametime_cur: 0,
 			frametimes_avg_rate: {
@@ -73,10 +77,16 @@ fn calc_frametime_avg (frametimes: &Vec<f32>) -> FrametimeAvg {
 	FrametimeAvg { mean, min, max, std_dev }
 }
 	
-fn imgui_main_ui(mut context: NonSendMut<ImguiContext>, mut state: ResMut<ImguiState>, time: Res<Time>) {
+fn imgui_main_ui(
+	mut context: NonSendMut<ImguiContext>,
+	mut state: ResMut<ImguiState>,
+	time: Res<Time>,
+	window: Single<&mut Window>,
+	mut exit: MessageWriter<AppExit>
+) {
 	let ui = context.ui();
-	let window = ui.window("Hello world");
-	window
+	let gui = ui.window("Hello world");
+	gui
 		.size([300.0, 100.0], Condition::FirstUseEver)
 		.position([0.0, 0.0], Condition::FirstUseEver)
 		.build(|| {
@@ -89,6 +99,35 @@ fn imgui_main_ui(mut context: NonSendMut<ImguiContext>, mut state: ResMut<ImguiS
 				mouse_pos[0], mouse_pos[1]
 			));
 			
+			{
+				let mut wind = window.into_inner();
+				
+				let mut fullscreen = is_fullscreen(&wind);
+				if ui.checkbox("Fullscreen", &mut fullscreen) {
+					set_fullscreen(&mut wind, fullscreen);
+				}
+				
+				ui.same_line();
+				let mut vsync = is_vsync(&wind);
+				if ui.checkbox("Vsync", &mut vsync) {
+					set_vsync(&mut wind, vsync);
+				}
+				
+				ui.same_line();
+				ui.checkbox("ImGui Demo", &mut state.demo_window_open);
+				
+				// TODO: are these colors correct like this?
+				let color1 = ui.push_style_color(StyleColor::Button, Color::srgba_u8(250, 66, 66, 102).to_linear().to_f32_array());
+				let color2 = ui.push_style_color(StyleColor::ButtonActive, Color::srgba_u8(250, 66, 66, 255).to_linear().to_f32_array());
+				let color3 = ui.push_style_color(StyleColor::ButtonHovered, Color::srgba_u8(250, 15, 15, 255).to_linear().to_f32_array());
+				if ui.button("Quit") {
+					exit.write(AppExit::Success);
+				}
+				color3.pop();
+				color2.pop();
+				color1.pop();
+			}
+	
 			let idx = state.frametime_cur;
 			state.frametimes[idx] = time.delta_secs();
 			state.frametime_cur = (state.frametime_cur + 1) % state.frametimes.len();
@@ -112,5 +151,56 @@ fn imgui_main_ui(mut context: NonSendMut<ImguiContext>, mut state: ResMut<ImguiS
 
 	if state.demo_window_open {
 		ui.show_demo_window(&mut state.demo_window_open);
+	}
+}
+
+// TODO: move out of imgui file
+// TODO: Could use something like this to set fullscreen both from imgui and settings.json
+// Now imgui does not have to manually modify window, instead we can just use Res<WindowSettings> and set a bool
+// And a separate system can check for changes here, you could even use one shot systems to essentially only apply setting changes at startup, at imgui or other UI modification, or via keypress
+// Or use change detection, even cleaner?
+//#[derive(Resource)]
+//struct WindowSettings {
+//	fullscreen: bool,
+//	fullscreen_borderless: bool,
+//}
+
+fn is_fullscreen (window: &Window) -> bool {
+	match window.mode {
+		WindowMode::Windowed => false,
+		WindowMode::BorderlessFullscreen(_) => true,
+		WindowMode::Fullscreen(_, _) => true
+	}
+}
+fn set_fullscreen (window: &mut Window, fullscreen: bool) {
+	window.mode = match fullscreen {
+		false => WindowMode::Windowed,
+		true => WindowMode::BorderlessFullscreen(MonitorSelection::Current),
+	};
+}
+fn is_vsync (window: &Window) -> bool {
+	match window.present_mode {
+		PresentMode::AutoNoVsync => false,
+		PresentMode::AutoVsync => true,
+		_ => true // Should not happen
+	}
+}
+fn set_vsync (window: &mut Window, vsync: bool) {
+	window.present_mode = match vsync {
+		false => PresentMode::AutoNoVsync,
+		true => PresentMode::AutoVsync,
+	};
+}
+
+fn window_key_actions(
+	keyboard: Res<ButtonInput<KeyCode>>,
+	window: Single<&mut Window>
+) {
+	if keyboard.just_pressed(KeyCode::F11) ||
+		(keyboard.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]) && keyboard.just_pressed(KeyCode::Enter)) {
+		
+		let mut wind = window.into_inner();
+		let fullscreen = !is_fullscreen(&wind);
+		set_fullscreen(&mut wind, fullscreen);
 	}
 }

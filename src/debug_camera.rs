@@ -1,33 +1,40 @@
 use bevy::prelude::*;
+use crate::camera_util::CameraUpdateSet;
 
 pub struct DebugCameraPlugin;
 
 impl Plugin for DebugCameraPlugin {
-    fn build(&self, app: &mut App) {
-        app
-            .add_systems(Startup, startup)
-            .add_systems(Update, update);
-    }
+	fn build(&self, app: &mut App) {
+		app.add_systems(Update, update.before(CameraUpdateSet)); // Select camera before moving it
+	}
 }
 
-#[derive(Resource)]
-struct DebugCameraSystem {
-    viewing_debug_cam : bool,
+#[derive(Component)]
+pub struct DebugCamera;
+
+#[derive(Default)]
+struct DebugCameraState {
+	viewing_debug_cam : bool,
 }
 
-fn startup (mut commands: Commands) {
-    commands.insert_resource(DebugCameraSystem{ viewing_debug_cam: false });
-}
-fn update(sys: Res<DebugCameraSystem>,
-    main_cam: Query<&mut Camera>) {
-    let gravity: f32 = -10.0;
-
-    for (e, mut particle, mut transform) in particles {
-        particle.velocity += Vec3::new(0.0, gravity, 0.0) * time.delta_secs();
-        transform.translation += particle.velocity * time.delta_secs();
-
-        if transform.translation.y < 0.0 {
-            commands.entity(e).despawn();
-        }
-    }
+fn update(
+	mut state: Local<DebugCameraState>,
+	keyboard: Res<ButtonInput<KeyCode>>,
+	main_cam: Single<(&mut Camera, &Transform), Without<DebugCamera>>,
+	debug_cam: Single<(&mut Camera, &mut Transform), With<DebugCamera>>
+) {
+	let (mut main_cam, main_transf) = main_cam.into_inner();
+	let (mut debug_cam, mut debug_transf) = debug_cam.into_inner();
+	
+	if keyboard.just_pressed(KeyCode::KeyP) {
+		state.viewing_debug_cam = !state.viewing_debug_cam;
+  
+		if state.viewing_debug_cam {
+            *debug_transf = *main_transf;
+		}
+	}
+	
+	main_cam.is_active = !state.viewing_debug_cam;
+	debug_cam.is_active = state.viewing_debug_cam;
+	
 }

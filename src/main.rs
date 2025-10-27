@@ -1,5 +1,11 @@
 #![allow(unused)]
 
+mod camera_util;
+mod debug_camera;
+mod flycam;
+mod imgui;
+mod particles;
+
 use bevy::{
 	prelude::*,
 	ecs::query::{QueryFilter},
@@ -16,11 +22,8 @@ use bevy::{
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::{f32::consts::*, env};
+use camera_util::CameraUpdateSet;
 
-//mod debug_camera;
-mod flycam;
-mod imgui;
-mod particles;
 
 fn main() {
 	
@@ -52,9 +55,12 @@ fn main() {
 			})
 		)
 		//.insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities) // Does not seem to exists, how do I schedule plugins correctly to avoid 1 frame latency?
-		.add_plugins(imgui::ImguiPlugin)
-		//.add_plugins((flycam::DebugCameraPlugin, flycam::FlycamPlugin).chain())
-		.add_plugins(particles::ParticlePlugin)
+		.add_plugins((
+			imgui::ImguiPlugin,
+			debug_camera::DebugCameraPlugin,
+			flycam::FlycamPlugin,
+			particles::ParticlePlugin
+		))
 		
 		//.add_plugins(FrameTimeDiagnosticsPlugin::default())
 		//.add_plugins(LogDiagnosticsPlugin::default())
@@ -76,9 +82,8 @@ fn main() {
 		//})
 
 		.add_observer(do_very_specific_thing_to_object)
-		.add_systems(Startup, startup)
-		.add_systems(Startup, spawn_animated_gltf)
-		.add_systems(Update, (/*spin_camera,*/ update_animation).chain())
+		.add_systems(Startup, (startup, spawn_animated_gltf))
+		.add_systems(Update, update_animation)
 		//.add_systems(Update, _log_scene_hierarchy)
 		.run();
 }
@@ -95,40 +100,26 @@ fn startup(
 	let red = materials.add(Color::srgb_u8(255, 144, 124));
 	
 	// camera
-	//commands.spawn((
-	//	Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-	//	Camera3d::default(),
-	//	Camera::default(),
-	//	bevy::render::view::Hdr,
-	//	bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
-	//	bevy::post_process::bloom::Bloom::NATURAL,
-	//	Name("Camera".to_string())
-	//));
 	commands.spawn((
 		flycam::Flycam::new( Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
-		Camera{
-			order: 0,
-			..default()
-		},
+		Camera::default(),
 		bevy::render::view::Hdr,
 		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
 		bevy::post_process::bloom::Bloom::NATURAL,
+		Name("Camera".to_string()),
 			Mesh3d(cube_mesh.clone()),
 			MeshMaterial3d(red.clone()), // just for debugging
-		Name("Camera".to_string())
 	));
 	commands.spawn((
+		debug_camera::DebugCamera,
 		flycam::Flycam::new( Transform::from_xyz(2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
-		Camera{
-			order: 1,
-			..default()
-		},
+		Camera::default(),
 		bevy::render::view::Hdr,
 		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
 		bevy::post_process::bloom::Bloom::NATURAL,
+		Name("DebugFlycam".to_string()),
 			Mesh3d(cube_mesh.clone()),
 			MeshMaterial3d(red.clone()), // just for debugging
-		Name("Camera2".to_string())
 	));
 	
 	// light
@@ -140,7 +131,6 @@ fn startup(
 		},
 		Name("Light".to_string())
 	));
-
 	
 	// ground plane
 	commands.spawn((

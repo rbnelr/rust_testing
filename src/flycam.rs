@@ -6,6 +6,7 @@ use bevy::{
 };
 use core::f32;
 use std::fmt;
+use crate::camera_util::CameraUpdateSet;
 
 pub struct FlycamPlugin;
 
@@ -13,7 +14,7 @@ impl Plugin for FlycamPlugin {
 	fn build(&self, app: &mut App) {
 		app
 			.add_systems(Startup, prepare_cursor)
-			.add_systems(Update, update_camera);
+			.add_systems(Update, update_camera.in_set(CameraUpdateSet));
 	}
 }
 
@@ -60,7 +61,7 @@ impl Flycam {
 				
 				default_vfov: vfov,
 				vfov_target: vfov,
-				vfov_smooth: 10.0,
+				vfov_smooth: 25.0,
 				zoom_speed: 1.5,
 				
 				speed: 4.0,
@@ -259,21 +260,31 @@ fn update_camera(
 		mut mouse_wheel: MessageReader<MouseWheel>,
 		mut cursor_options: Single<&mut CursorOptions>,
 		mut cursor_query: Single<(&mut CursorIcon, &Window)>,
-		mut query: Query<(&mut Transform, &mut Flycam, &mut Projection), With<Camera3d>>) {
+		mut query: Query<(&mut Transform, &mut Flycam, &Camera, &mut Projection), With<Camera3d>>) {
 	
 	let mut cursor_opt = cursor_options.into_inner();
 	let (mut cursor_icon, window) = cursor_query.into_inner();
 	
 	handle_cursor(&keyboard, &mouse, &window, &mut cursor_opt, &mut cursor_icon);
 	
-	for (mut transf, mut flycam, mut proj) in &mut query {
-		zoom(&time, &keyboard, &mut mouse_wheel, &mut flycam, proj.as_mut());
-		mouselook(&time, &keyboard, &mouse, &mut mouse_motion, &cursor_opt, &mut transf, &mut flycam, &proj);
-		movement(&time, &keyboard, &mut transf, &mut flycam);
-		// NOTE: controlling multiple cameras does not work since MessageReaders eat input
+	for (mut transf, mut flycam, cam, mut proj) in &mut query {
+		if cam.is_active { // disabling rendering also disables controls
+			zoom(&time, &keyboard, &mut mouse_wheel, &mut flycam, proj.as_mut());
+			mouselook(&time, &keyboard, &mouse, &mut mouse_motion, &cursor_opt, &mut transf, &mut flycam, &proj);
+			movement(&time, &keyboard, &mut transf, &mut flycam);
+			// NOTE: controlling multiple cameras does not work since MessageReaders eat input
+		}
 	}
 }
 
+// TODO: Should not be tied to a single camera type like this
+// prepare_cursor needs to happen anyway, and cursor visible, grab_mode and icon need to be set depending on context
+// some game states might want cursor visible (but locked and other icon on a certain key, like game and debug cameras)
+// others might want it invisible and locked always (like FPS camera, ex. walk around as citizen in city buidler)
+// some UI states might have various icons to use etc.
+// sounds like cursor should simply be updated every frame using data from various places like: Cursor::set(grab: Free/Locked, icon: Normal/AllScroll/Invisible)
+// Though either this means using a global function to set (and having it set state how it wants)
+// or simply setting data in a Cursor Resource, and a system that applies it
 fn prepare_cursor(mut commands: Commands, window: Single<Entity, With<Window>>) {
 	let icon : CursorIcon = SystemCursorIcon::Default.into();
 	commands.entity(*window).insert(icon); // clone?
