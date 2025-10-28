@@ -1,4 +1,7 @@
 {
+	"render": {
+		"backends": "gl"
+	},
 	"window": {
 		"fullscreen": false,
 		"fullscreen_borderless": true,

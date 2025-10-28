@@ -1,10 +1,14 @@
 use bevy::prelude::*;
+use crate::flycam::Flycam;
 use crate::phases::Phase;
+use bevy_inspector_egui::quick::ResourceInspectorPlugin;
 
 pub struct DebugCameraPlugin;
 impl Plugin for DebugCameraPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_systems(Update, update
+		app
+			.insert_resource(DebugCameraState::default())
+			.add_systems(Update, update
 			.after(Phase::SerializationAndImgui)
 			.before(Phase::CameraUpdate)
 		);
@@ -14,13 +18,14 @@ impl Plugin for DebugCameraPlugin {
 #[derive(Component)]
 pub struct DebugCamera;
 
-#[derive(Default)]
+#[derive(Resource, Default, Reflect)]
+#[reflect(Resource)]
 struct DebugCameraState {
 	viewing_debug_cam : bool,
 }
 
 fn update(
-	mut state: Local<DebugCameraState>,
+	mut state: ResMut<DebugCameraState>,
 	keyboard: Res<ButtonInput<KeyCode>>,
 	main_cam: Single<(&mut Camera, &Transform), Without<DebugCamera>>,
 	debug_cam: Single<(&mut Camera, &mut Transform), With<DebugCamera>>

@@ -21,22 +21,37 @@ impl Plugin for SerializationPlugin {
 
 const SETTINGS_FILE: &'static str = "settings.json";
 
+#[derive(Resource, Reflect, Serialize, Deserialize, Clone)]
+#[reflect(Resource)]
+pub struct RenderSettings {
+	pub backends: String,
+}
+
 #[derive(Serialize, Deserialize)]
-struct Settings {
+pub struct Settings {
+	pub render: RenderSettings,
 	window: WindowSettings,
 }
 
 pub fn save(
 	world: &mut World,
 	params: &mut SystemState<(
-		Res<WindowSettings>
+		Option<Res<RenderSettings>>,
+		Res<WindowSettings>,
 	)>
 ) {
 	let (
-		window_settings
+		render_settings,
+		window_settings,
 	) = params.get(world);
 	
+	let render_settings = match render_settings {
+		Some(s) => s.clone(),
+		_ => RenderSettings { backends: "vulkan, dx12, opengl, webgpu".to_string() }
+	};
+	
 	let settings = Settings{
+		render: render_settings,
 		window: *window_settings
 	};
 	
@@ -53,25 +68,41 @@ pub fn save(
 	
 	println!("Failed to save {SETTINGS_FILE}!");
 }
-pub fn load(
-	world: &mut World,
-	params: &mut SystemState<(
-		ResMut<WindowSettings>
-	)>
-) {
-	let (
-		mut window_settings
-	) = params.get_mut(world);
-	
+// load_settings() + apply_settings() Allows loading Settings before app starts
+pub fn load_settings() -> Option<Settings> {
 	if let Ok(json_str) = std::fs::read_to_string(SETTINGS_FILE) {
 		if let Ok(settings) = serde_json::from_str::<Settings>(&json_str) {
-			*window_settings = settings.window;
 			println!("Loaded!");
-			return;
+			return settings.into();
 		}
 	}
 	
 	println!("Failed to load {SETTINGS_FILE}!");
+	None
+}
+pub fn apply_settings(
+	world: &mut World,
+	settings: Option<Settings>
+) {
+	let mut params: SystemState<(
+		ResMut<WindowSettings>,
+		Commands,
+	)> = SystemState::new(world);
+	let (
+		mut window_settings,
+		mut commands,
+	) = params.get_mut(world);
+	
+	if let Some(settings) = settings {
+		commands.insert_resource(settings.render);
+		*window_settings = settings.window;
+	}
+	
+	params.apply(world);
+}
+pub fn load(world: &mut World) {
+	let settings = load_settings();
+	apply_settings(world, settings);
 }
 
 fn save_load_controls(

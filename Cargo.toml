@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-#bevy = { version = "0.17.2", features = ["bevy_dev_tools"] }
-bevy = { version = "0.17.2", features = ["dynamic_linking", "bevy_dev_tools"] }
+bevy = { version = "0.17.2", features = ["bevy_dev_tools"] }
+#bevy = { version = "0.17.2", features = ["dynamic_linking", "bevy_dev_tools"] }
+bevy_egui = "0.38.0"
+bevy-inspector-egui = "0.35.0"
 #bevy_mod_imgui = "0.7.2"
 bevy_mod_imgui = { git = "https://github.com/jbrd/bevy_mod_imgui", branch = "main" } # 0.8 needed for bevy 0.17 but not yet in crates.io ?
 imgui = "0.12.0"

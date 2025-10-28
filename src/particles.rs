@@ -2,6 +2,8 @@ use std::f32::INFINITY;
 use bevy::prelude::*;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use crate::app_control::WindowSettings;
+use crate::flycam::Flycam;
 
 pub struct ParticlePlugin;
 

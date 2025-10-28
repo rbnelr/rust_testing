@@ -14,18 +14,19 @@ pub struct ImguiPlugin;
 impl Plugin for ImguiPlugin {
 	fn build(&self, app: &mut App) {
 		app
-			.insert_resource(ImguiState::default())
 			.add_plugins(bevy_mod_imgui::ImguiPlugin{
 				ini_filename: Some("imgui.ini".into()),
 				font_oversample_h: 2,
 				font_oversample_v: 2,
 				..default()
 			})
+			.insert_resource(ImguiState::default())
 			.add_systems(Update, imgui_main_ui.in_set(Phase::SerializationAndImgui));
 	}
 }
 
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
+#[reflect(Resource)]
 struct ImguiState {
 	demo_window_open: bool,
 	
@@ -51,6 +52,7 @@ impl Default for ImguiState {
 	}
 }
 
+#[derive(Reflect)]
 struct FrametimeAvg {
 	mean: f32,
 	min: f32,

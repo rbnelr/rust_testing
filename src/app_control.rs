@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::window::{CursorIcon, CursorOptions, PrimaryWindow, WindowMode, PresentMode};
 use serde::{Serialize, Deserialize};
 use crate::phases::Phase;
+use crate::serialization::{RenderSettings, Settings};
 
 pub struct AppControlPlugin;
 impl Plugin for AppControlPlugin {
@@ -14,7 +15,8 @@ impl Plugin for AppControlPlugin {
 	}
 }
 
-#[derive(Resource, Serialize, Deserialize, Copy, Clone, PartialEq)]
+#[derive(Resource, Reflect, Serialize, Deserialize, Copy, Clone, PartialEq)]
+#[reflect(Resource)]
 pub struct WindowSettings {
 	// Ideally I'd be able to restore windowing state after restarting
 	// Like floating window position/size, window maximized (which monitor?), window docked, like docked to left size

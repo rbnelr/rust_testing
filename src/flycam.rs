@@ -6,6 +6,7 @@ use bevy::{
 };
 use core::f32;
 use std::fmt;
+use crate::app_control::WindowSettings;
 use crate::phases::Phase;
 
 pub struct FlycamPlugin;
@@ -20,8 +21,9 @@ impl Plugin for FlycamPlugin {
 
 const MOUSELOOK_BTN : MouseButton = MouseButton::Middle;
 
-#[derive(Component)]
+#[derive(Component, Reflect)]
 #[require(Transform, Camera3d, Camera)]
+#[reflect(Component)]
 pub struct Flycam {
 	pub move_planar : bool,
 	pub vfov_multiplied_sensitivity : bool,

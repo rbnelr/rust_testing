@@ -13,7 +13,10 @@ use bevy::{
 	ecs::query::{QueryFilter},
 	ecs::schedule::{ScheduleBuildSettings, LogLevel},
 	dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
-	render::*,
+	render::{
+		RenderPlugin,
+		settings::{RenderCreation, WgpuSettings, Backends}
+	},
 	camera::Viewport,
 	scene::SceneInstanceReady,
 	//math::*,
@@ -25,6 +28,9 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::{f32::consts::*, env};
 
+use bevy_egui::*;
+use bevy_inspector_egui::prelude::*;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 fn main() {
 	
@@ -35,6 +41,8 @@ fn main() {
 	println!("Working directory: {:?}", std::env::current_dir().unwrap());
 	println!("Exe path: {:?}", std::env::current_exe().unwrap());
 	println!("Asset path: {:?}", asset_path);
+	
+	let settings = serialization::load_settings();
 	
 	let mut app = App::new();
 	app.configure_schedules(ScheduleBuildSettings {
@@ -55,8 +63,12 @@ fn main() {
 				..default()
 			})
 			.set(RenderPlugin {
-				render_creation: settings::RenderCreation::Automatic(settings::WgpuSettings {
-					backends: Some(settings::Backends::DX12),
+				render_creation: RenderCreation::Automatic(WgpuSettings {
+					backends: Some(match &settings {
+						Some(s) => Backends::from_comma_list(s.render.backends.as_str()),
+						//_ => Backends::all() // default select from all, but half are broken for me
+						_ => Backends::GL
+					}),
 					..default()
 				}),
 				..default()
@@ -67,12 +79,14 @@ fn main() {
 			})
 		)
 		.add_plugins((
+			EguiPlugin::default(),
+			WorldInspectorPlugin::new(), // TODO: Inspector only appears in first camera, should appear in all cameras
 			serialization::SerializationPlugin,
 			imgui::ImguiPlugin,
 			app_control::AppControlPlugin,
 			debug_camera::DebugCameraPlugin,
 			flycam::FlycamPlugin,
-			particles::ParticlePlugin
+			particles::ParticlePlugin,
 		))
 		
 		//.add_plugins(FrameTimeDiagnosticsPlugin::default())
@@ -106,6 +120,7 @@ fn main() {
 		;
 	
 	phases::update_schedule_configs(&mut app);
+	serialization::apply_settings(app.world_mut(), settings);
 	
 	app.run();
 }
