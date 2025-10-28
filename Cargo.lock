@@ -3899,8 +3899,11 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy_mod_imgui",
+ "imgui",
  "rand",
  "rand_chacha",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

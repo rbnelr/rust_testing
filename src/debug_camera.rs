@@ -1,11 +1,13 @@
 use bevy::prelude::*;
-use crate::camera_util::CameraUpdateSet;
+use crate::phases::Phase;
 
 pub struct DebugCameraPlugin;
-
 impl Plugin for DebugCameraPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_systems(Update, update.before(CameraUpdateSet)); // Select camera before moving it
+		app.add_systems(Update, update
+			.after(Phase::SerializationAndImgui)
+			.before(Phase::CameraUpdate)
+		);
 	}
 }
 
@@ -36,5 +38,4 @@ fn update(
 	
 	main_cam.is_active = !state.viewing_debug_cam;
 	debug_cam.is_active = state.viewing_debug_cam;
-	
 }

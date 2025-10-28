@@ -6,7 +6,7 @@ use bevy::{
 };
 use core::f32;
 use std::fmt;
-use crate::camera_util::CameraUpdateSet;
+use crate::phases::Phase;
 
 pub struct FlycamPlugin;
 
@@ -14,7 +14,7 @@ impl Plugin for FlycamPlugin {
 	fn build(&self, app: &mut App) {
 		app
 			.add_systems(Startup, prepare_cursor)
-			.add_systems(Update, update_camera.in_set(CameraUpdateSet));
+			.add_systems(Update, update_camera.in_set(Phase::CameraUpdate));
 	}
 }
 

@@ -1,9 +1,11 @@
 #![allow(unused)]
 
-mod camera_util;
+mod phases;
+mod serialization;
+mod imgui;
+mod app_control;
 mod debug_camera;
 mod flycam;
-mod imgui;
 mod particles;
 
 use bevy::{
@@ -22,7 +24,6 @@ use bevy::{
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::{f32::consts::*, env};
-use camera_util::CameraUpdateSet;
 
 
 fn main() {
@@ -40,8 +41,19 @@ fn main() {
 		ambiguity_detection: LogLevel::Error,
 		..default()
 	});
-
+	
 	app.add_plugins(DefaultPlugins
+			.set(WindowPlugin {
+				primary_window: Some(Window {
+					title: app_control::APP_NAME.into(),
+					name: Some(app_control::APP_NAME.into()),
+					resolution: (1152, 720).into(),
+					resize_constraints: WindowResizeConstraints { min_width: 100.0, min_height: 100.0, ..default() },
+					resizable: true,
+					..default()
+				}),
+				..default()
+			})
 			.set(RenderPlugin {
 				render_creation: settings::RenderCreation::Automatic(settings::WgpuSettings {
 					backends: Some(settings::Backends::DX12),
@@ -54,9 +66,10 @@ fn main() {
 				..default()
 			})
 		)
-		//.insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities) // Does not seem to exists, how do I schedule plugins correctly to avoid 1 frame latency?
 		.add_plugins((
+			serialization::SerializationPlugin,
 			imgui::ImguiPlugin,
+			app_control::AppControlPlugin,
 			debug_camera::DebugCameraPlugin,
 			flycam::FlycamPlugin,
 			particles::ParticlePlugin
@@ -82,10 +95,19 @@ fn main() {
 		//})
 
 		.add_observer(do_very_specific_thing_to_object)
-		.add_systems(Startup, (startup, spawn_animated_gltf))
-		.add_systems(Update, update_animation)
+		.add_systems(Startup, (
+			startup,
+			spawn_animated_gltf
+		))
+		.add_systems(Update, (
+			update_animation,
+		))
 		//.add_systems(Update, _log_scene_hierarchy)
-		.run();
+		;
+	
+	phases::update_schedule_configs(&mut app);
+	
+	app.run();
 }
 
 fn startup(
