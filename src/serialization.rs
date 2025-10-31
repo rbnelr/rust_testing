@@ -25,6 +25,7 @@ const SETTINGS_FILE: &'static str = "settings.json";
 #[reflect(Resource)]
 pub struct RenderSettings {
 	pub backends: String,
+	pub disable_validation_in_debug: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -47,7 +48,10 @@ pub fn save(
 	
 	let render_settings = match render_settings {
 		Some(s) => s.clone(),
-		_ => RenderSettings { backends: "vulkan, dx12, opengl, webgpu".to_string() }
+		_ => RenderSettings {
+			backends: "vulkan, dx12, opengl, webgpu".to_string(),
+			disable_validation_in_debug: true,
+		}
 	};
 	
 	let settings = Settings{

@@ -13,10 +13,8 @@ use bevy::{
 	ecs::query::{QueryFilter},
 	ecs::schedule::{ScheduleBuildSettings, LogLevel},
 	dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
-	render::{
-		RenderPlugin,
-		settings::{RenderCreation, WgpuSettings, Backends}
-	},
+	render::*,
+	render::settings::Backends,
 	camera::Viewport,
 	scene::SceneInstanceReady,
 	//math::*,
@@ -26,15 +24,42 @@ use bevy::{
 //use bevy::dev_tools::*;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use std::{f32::consts::*, env};
+use std::f32::consts::*;
 
 use bevy_egui::*;
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
+use bevy::log::LogPlugin;
+use tracing_subscriber::{filter::LevelFilter, layer::SubscriberExt, Layer};
+
+/*
+// Custom logging to set breakpoins on engine errors
+#[cfg(OVERRIDE_LOG)]
+struct MyCustomLayer;
+#[cfg(OVERRIDE_LOG)]
+impl MyCustomLayer {
+	fn my_logging_function(&self, event: &tracing::Event<'_>) {
+		println!("{:?}", event);
+	}
+}
+#[cfg(OVERRIDE_LOG)]
+impl<S> Layer<S> for MyCustomLayer
+where
+	S: tracing::Subscriber,
+{
+	fn on_event(
+		&self,
+		event: &tracing::Event<'_>,
+		_ctx: tracing_subscriber::layer::Context<'_, S>,
+	) {
+		self.my_logging_function(event);
+	}
+}
+*/
+
 fn main() {
-	
-	let asset_path = env::current_dir().unwrap()
+	let asset_path = std::env::current_dir().unwrap()
 		.join("assets")
 		.to_string_lossy().to_string();
 		
@@ -50,74 +75,96 @@ fn main() {
 		..default()
 	});
 	
-	app.add_plugins(DefaultPlugins
-			.set(WindowPlugin {
-				primary_window: Some(Window {
-					title: app_control::APP_NAME.into(),
-					name: Some(app_control::APP_NAME.into()),
-					resolution: (1152, 720).into(),
-					resize_constraints: WindowResizeConstraints { min_width: 100.0, min_height: 100.0, ..default() },
-					resizable: true,
-					..default()
-				}),
+	app.add_plugins({
+		let mut plugins = DefaultPlugins
+		.set(WindowPlugin {
+			primary_window: Some(Window {
+				title: app_control::APP_NAME.into(),
+				name: Some(app_control::APP_NAME.into()),
+				resolution: (1152, 720).into(),
+				resize_constraints: WindowResizeConstraints { min_width: 100.0, min_height: 100.0, ..default() },
+				resizable: true,
 				..default()
-			})
-			.set(RenderPlugin {
-				render_creation: RenderCreation::Automatic(WgpuSettings {
-					backends: Some(match &settings {
-						Some(s) => Backends::from_comma_list(s.render.backends.as_str()),
-						//_ => Backends::all() // default select from all, but half are broken for me
-						_ => Backends::GL
-					}),
-					..default()
-				}),
-				..default()
-			})
-			.set(AssetPlugin {
-				file_path: asset_path,
-				..default()
-			})
-		)
-		.add_plugins((
-			EguiPlugin::default(),
-			WorldInspectorPlugin::new(), // TODO: Inspector only appears in first camera, should appear in all cameras
-			serialization::SerializationPlugin,
-			imgui::ImguiPlugin,
-			app_control::AppControlPlugin,
-			debug_camera::DebugCameraPlugin,
-			flycam::FlycamPlugin,
-			particles::ParticlePlugin,
-		))
+			}),
+			..default()
+		})
+		.set(RenderPlugin {
+			render_creation: settings::RenderCreation::Automatic({
+				let mut set = settings::WgpuSettings::default();
+				if let Some(s) = &settings {
+					set.backends = Some(Backends::from_comma_list(s.render.backends.as_str()));
+					
+					// Allow disabling validation layers since there seem to be bugs(?) in some part of bevy/wgpu?
+					// Unfortunately I'm unsure how to only disable them for vulkan, as backends still allows Bevy to select it on its own
+					if s.render.disable_validation_in_debug {
+						set.instance_flags = bevy::render::settings::InstanceFlags::empty();
+					}
+				}
+				set
+			}),
+			..default()
+		})
+		.set(AssetPlugin {
+			file_path: asset_path,
+			..default()
+		});
 		
-		//.add_plugins(FrameTimeDiagnosticsPlugin::default())
-		//.add_plugins(LogDiagnosticsPlugin::default())
-		//.add_plugins(FpsOverlayPlugin {
-		//	config: FpsOverlayConfig {
-		//		text_config: TextFont {
-		//			font_size: 20.0,
-		//			..default()
-		//		},
-		//		refresh_interval: core::time::Duration::from_millis(100),
-		//		enabled: true,
-		//		frame_time_graph_config: FrameTimeGraphConfig {
-		//			enabled: true,
-		//			min_fps: 30.0,
-		//			target_fps: 144.0,
-		//		},
-		//		..default()
-		//	},
-		//})
+		/*{
+			plugins = plugins.set(LogPlugin {
+				filter: "".to_string(),
+				level: bevy::log::Level::WARN,
+				custom_layer: |_app| Some(Box::new(MyCustomLayer)),
+				..default()
+			});
+		}*/
+			
+		plugins
+	});
+	
+	app.add_plugins((
+		EguiPlugin { 
+			//bindless_mode_array_size: None,
+			..default()
+		},
+		WorldInspectorPlugin::new(), // TODO: Inspector only appears in first camera, should appear in all cameras
+		serialization::SerializationPlugin,
+		imgui::ImguiPlugin,
+		app_control::AppControlPlugin,
+		debug_camera::DebugCameraPlugin,
+		flycam::FlycamPlugin,
+		particles::ParticlePlugin,
+	));
+		
+	//.add_plugins(FrameTimeDiagnosticsPlugin::default())
+	//.add_plugins(LogDiagnosticsPlugin::default())
+	//.add_plugins(FpsOverlayPlugin {
+	//	config: FpsOverlayConfig {
+	//		text_config: TextFont {
+	//			font_size: 20.0,
+	//			..default()
+	//		},
+	//		refresh_interval: core::time::Duration::from_millis(100),
+	//		enabled: true,
+	//		frame_time_graph_config: FrameTimeGraphConfig {
+	//			enabled: true,
+	//			min_fps: 30.0,
+	//			target_fps: 144.0,
+	//		},
+	//		..default()
+	//	},
+	//})
 
-		.add_observer(do_very_specific_thing_to_object)
-		.add_systems(Startup, (
-			startup,
-			spawn_animated_gltf
-		))
-		.add_systems(Update, (
-			update_animation,
-		))
+	app.add_observer(do_very_specific_thing_to_object);
+	
+	app.add_systems(Startup, (
+		startup,
+		spawn_animated_gltf
+	));
+	
+	app.add_systems(Update, (
+		update_animation,
+	));
 		//.add_systems(Update, _log_scene_hierarchy)
-		;
 	
 	phases::update_schedule_configs(&mut app);
 	serialization::apply_settings(app.world_mut(), settings);
@@ -130,7 +177,6 @@ fn startup(
 	mut meshes: ResMut<Assets<Mesh>>,
 	mut materials: ResMut<Assets<StandardMaterial>>
 ) {
-	
 	let mut rng = ChaCha8Rng::seed_from_u64(19878367467713);
 	let cube_mesh = meshes.add(Cuboid::new(0.5, 0.5, 0.5));
 	let blue = materials.add(Color::srgb_u8(124, 144, 255));

@@ -1,6 +1,7 @@
 {
 	"render": {
-		"backends": "gl"
+		"backends": "vk, dx12",
+		"disable_validation_in_debug": true
 	},
 	"window": {
 		"fullscreen": false,
