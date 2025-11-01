@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use crate::flycam::Flycam;
 use crate::phases::Phase;
-use bevy_inspector_egui::quick::ResourceInspectorPlugin;
 
 pub struct DebugCameraPlugin;
 impl Plugin for DebugCameraPlugin {
