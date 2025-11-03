@@ -126,15 +126,21 @@ fn ui_example_system(
 			ui.checkbox(&mut ws.fullscreen, "Fullscreen");
 			ui.checkbox(&mut ws.fullscreen_borderless, "Borderless");
 			ui.checkbox(&mut ws.vsync, "Vsync");
+			
+			ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+				if ui.button(RichText::new("Quit").color(Color32::RED)).clicked() {
+					exit.write(AppExit::Success);
+				}
+			});
 		});
 			
 		if ws != *window_settings { // for change-detection
 			*window_settings = ws;
 		}
 		
-		if ui.button(RichText::new("Quit").color(Color32::RED)).clicked() {
-			exit.write(AppExit::Success);
-		}
+		frametimes.gui(ui, time);
+		
+		ui.add_space(6.0);
 		
 		ui.horizontal(|ui| {
 			ui.label("settings.json:");
@@ -145,9 +151,6 @@ fn ui_example_system(
 				do_save = true;
 			}
 		});
-		
-		ui.separator();
-		frametimes.gui(ui, time);
 	});
 	
 	if do_load {
