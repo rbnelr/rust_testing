@@ -1,10 +1,12 @@
 use bevy::prelude::*;
-use bevy::ecs::system::{SystemState};
+use bevy::ecs::system::{SystemState, RunSystemOnce};
 use bevy::window::{CursorIcon, CursorOptions, PrimaryWindow, WindowMode, PresentMode};
 use serde::{Serialize, Deserialize};
 use crate::phases::Phase;
-use crate::serialization::{RenderSettings, Settings};
+use crate::serialization::{RenderSettings, Settings, load, save};
+
 use bevy_egui::*;
+use egui::{Ui, RichText, Color32};
 
 pub struct AppControlPlugin;
 impl Plugin for AppControlPlugin {
@@ -12,8 +14,7 @@ impl Plugin for AppControlPlugin {
 		app
 			.insert_resource(WindowSettings::default())
 			.add_systems(Update, window_control.in_set(Phase::Windowing))
-			.add_systems(EguiPrimaryContextPass, ui_example_system //.in_set(Phase::Windowing) execute UI first?
-			);
+			.add_systems(EguiPrimaryContextPass, ui_example_system); //.in_set(Phase::Windowing) execute UI first?);
 	}
 }
 
@@ -98,6 +99,7 @@ fn ui_example_system(
 		Res<Time>,
 		ResMut<WindowSettings>,
 		MessageWriter<AppExit>,
+		Local<crate::egui_histogram::Frametimes>,
 		Commands,
 	)>
 ) -> Result {
@@ -105,71 +107,48 @@ fn ui_example_system(
 		.query_filtered::<&mut EguiContext, With<PrimaryEguiContext>>()
 		.single_mut(world)?.clone();
 	
+	let mut do_load = false;
+	let mut do_save = false;
+	
 	egui::Window::new("Main").show(egui_context.get_mut(), |ui| {
-		
-		let mut do_load = false;
-		let mut do_save = false;
 		
 		let (
 			time,
 			mut window_settings,
 			mut exit,
+			mut frametimes,
 			commands,
 		) = sys.get_mut(world);
 		
-		ui.label("world");
-	});
-	Ok(())
-}
-
-/*
-let ui = ctx.ui();
-	let gui = ui.window("Hello world");
-	gui
-		.size([300.0, 100.0], Condition::FirstUseEver)
-		.position([0.0, 0.0], Condition::FirstUseEver)
-		.build(|| {
-			let mut ws = *window_settings;
-			
-			ui.checkbox("Fullscreen", &mut ws.fullscreen);
-			
-			ui.same_line();
-			ui.checkbox("Borderless", &mut ws.fullscreen_borderless);
-			
-			ui.same_line();
-			ui.checkbox("Vsync", &mut ws.vsync);
-			
-			if ws != *window_settings { // for change-detection
-				*window_settings = ws;
-			}
-			
-			ui.same_line();
-			ui.checkbox("ImGui Demo", &mut state.demo_window_open);
-			
-			// TODO: are these colors correct like this?
-			let color1 = ui.push_style_color(StyleColor::Button, Color::srgba_u8(250, 66, 66, 102).to_linear().to_f32_array());
-			let color2 = ui.push_style_color(StyleColor::ButtonActive, Color::srgba_u8(250, 66, 66, 255).to_linear().to_f32_array());
-			let color3 = ui.push_style_color(StyleColor::ButtonHovered, Color::srgba_u8(250, 15, 15, 255).to_linear().to_f32_array());
-			if ui.button("Quit") {
-				exit.write(AppExit::Success);
-			}
-			color3.pop();
-			color2.pop();
-			color1.pop();
-			
-			ui.text("debug.json:");
-			ui.same_line();
-			do_load = ui.button("Load [;]");
-			ui.same_line();
-			do_save = ui.button("Save [']");
-			
-			ui.separator();
-			imgui_fps_histogram(&ui, &mut state, &time);
+		let mut ws = *window_settings;
+		
+		ui.horizontal(|ui| {
+			ui.checkbox(&mut ws.fullscreen, "Fullscreen");
+			ui.checkbox(&mut ws.fullscreen_borderless, "Borderless");
+			ui.checkbox(&mut ws.vsync, "Vsync");
 		});
-	
-	if state.demo_window_open {
-		ctx.ui().show_demo_window(&mut state.demo_window_open);
-	}
+			
+		if ws != *window_settings { // for change-detection
+			*window_settings = ws;
+		}
+		
+		if ui.button(RichText::new("Quit").color(Color32::RED)).clicked() {
+			exit.write(AppExit::Success);
+		}
+		
+		ui.horizontal(|ui| {
+			ui.label("settings.json:");
+			if ui.button("Load [;]").clicked() {
+				do_load = true;
+			}
+			if ui.button("Save [']").clicked() {
+				do_save = true;
+			}
+		});
+		
+		ui.separator();
+		frametimes.gui(ui, time);
+	});
 	
 	if do_load {
 		world.run_system_once(load);
@@ -177,4 +156,6 @@ let ui = ctx.ui();
 	else if do_save {
 		world.run_system_once(save);
 	}
-*/
+	
+	Ok(())
+}

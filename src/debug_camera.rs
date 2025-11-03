@@ -15,6 +15,9 @@ impl Plugin for DebugCameraPlugin {
 }
 
 #[derive(Component)]
+pub struct MainCamera;
+
+#[derive(Component)]
 pub struct DebugCamera;
 
 #[derive(Resource, Default, Reflect)]
@@ -26,8 +29,9 @@ struct DebugCameraState {
 fn update(
 	mut state: ResMut<DebugCameraState>,
 	keyboard: Res<ButtonInput<KeyCode>>,
-	main_cam: Single<(&mut Camera, &Transform), Without<DebugCamera>>,
-	debug_cam: Single<(&mut Camera, &mut Transform), With<DebugCamera>>
+	main_cam: Single<(&mut Camera, &Transform), (With<MainCamera>, Without<DebugCamera>)>,
+	debug_cam: Single<(&mut Camera, &mut Transform), (With<DebugCamera>, Without<MainCamera>)>,
+	mut commands: Commands
 ) {
 	let (mut main_cam, main_transf) = main_cam.into_inner();
 	let (mut debug_cam, mut debug_transf) = debug_cam.into_inner();

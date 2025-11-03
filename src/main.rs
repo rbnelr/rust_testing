@@ -3,6 +3,7 @@
 mod phases;
 mod serialization;
 mod imgui;
+mod egui_histogram;
 mod app_control;
 mod debug_camera;
 mod flycam;
@@ -10,18 +11,14 @@ mod particles;
 
 use bevy::{
 	prelude::*,
+	ecs::name::*,
 	ecs::query::{QueryFilter},
 	ecs::schedule::{ScheduleBuildSettings, LogLevel},
-	//dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
 	render::*,
 	render::settings::Backends,
-	camera::Viewport,
+	camera::*,
 	scene::SceneInstanceReady,
-	//math::*,
-	//diagnostic::*,
-	//text::FontSmoothing,
 };
-//use bevy::dev_tools::*;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::f32::consts::*;
@@ -120,12 +117,13 @@ fn main() {
 			
 		plugins
 	});
+	app.insert_resource(EguiGlobalSettings {
+		auto_create_primary_context: false,
+		..default()
+	});
 	app.add_plugins((
-		EguiPlugin { 
-			//bindless_mode_array_size: None,
-			..default()
-		},
-		WorldInspectorPlugin::new(), // TODO: Inspector only appears in first camera, should appear in all cameras
+		EguiPlugin::default(),
+		WorldInspectorPlugin::new(),
 	));
 	app.add_plugins((
 		serialization::SerializationPlugin,
@@ -135,26 +133,7 @@ fn main() {
 		flycam::FlycamPlugin,
 		particles::ParticlePlugin,
 	));
-		
-	//.add_plugins(FrameTimeDiagnosticsPlugin::default())
-	//.add_plugins(LogDiagnosticsPlugin::default())
-	//.add_plugins(FpsOverlayPlugin {
-	//	config: FpsOverlayConfig {
-	//		text_config: TextFont {
-	//			font_size: 20.0,
-	//			..default()
-	//		},
-	//		refresh_interval: core::time::Duration::from_millis(100),
-	//		enabled: true,
-	//		frame_time_graph_config: FrameTimeGraphConfig {
-	//			enabled: true,
-	//			min_fps: 30.0,
-	//			target_fps: 144.0,
-	//		},
-	//		..default()
-	//	},
-	//})
-
+	
 	app.add_observer(do_very_specific_thing_to_object);
 	
 	app.add_systems(Startup, (
@@ -183,14 +162,32 @@ fn startup(
 	let blue = materials.add(Color::srgb_u8(124, 144, 255));
 	let red = materials.add(Color::srgb_u8(255, 144, 124));
 	
-	// camera
+	// cameras
+	
+	// Overlay camera for Egui, as egui does not handle switching between main/debug camera
 	commands.spawn((
+		PrimaryEguiContext,
+		Camera3d::default(),
+		Camera {
+			order: 10,
+			output_mode: CameraOutputMode::Write {
+				blend_state: Some(render_resource::BlendState::ALPHA_BLENDING),
+				clear_color: ClearColorConfig::None,
+			},
+			clear_color: ClearColorConfig::Custom(Color::NONE),
+			..default()
+		},
+		Name::new("Camera"),
+	));
+	
+	commands.spawn((
+		debug_camera::MainCamera,
 		flycam::Flycam::new( Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
 		Camera::default(),
 		bevy::render::view::Hdr,
 		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
 		bevy::post_process::bloom::Bloom::NATURAL,
-		Name("Camera".to_string()),
+		Name::new("Camera"),
 			Mesh3d(cube_mesh.clone()),
 			MeshMaterial3d(red.clone()), // just for debugging
 	));
@@ -201,7 +198,7 @@ fn startup(
 		bevy::render::view::Hdr,
 		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
 		bevy::post_process::bloom::Bloom::NATURAL,
-		Name("DebugFlycam".to_string()),
+		Name::new("DebugFlycam"),
 			Mesh3d(cube_mesh.clone()),
 			MeshMaterial3d(red.clone()), // just for debugging
 	));
@@ -213,14 +210,14 @@ fn startup(
 			shadows_enabled: true,
 			..default()
 		},
-		Name("Light".to_string())
+		Name::new("Light")
 	));
 	
 	// ground plane
 	commands.spawn((
 		Mesh3d(meshes.add(Plane3d::default().mesh().size(100.0, 100.0))),
 		MeshMaterial3d(materials.add(Color::WHITE)),
-		Name("Ground Plane".to_string())
+		Name::new("Ground Plane")
 	));
 
 	commands.spawn_batch(
@@ -233,7 +230,7 @@ fn startup(
 				Mesh3d(cube_mesh.clone()),
 				MeshMaterial3d(blue.clone()),
 				Transform::from_xyz(x, y, z),
-				Name("Cube".to_string())
+				Name::new("Cube")
 			)
 		})
 		.take(10),
@@ -287,48 +284,4 @@ fn update_animation(
 		second_joint_transform.rotation =
 			Quat::from_rotation_z(FRAC_PI_2 * ops::sin(time.elapsed_secs()*3.0));
 	}
-}
-
-#[derive(Component)]
-struct Name(String);
-
-fn _log_entity_tree (world: &World, entity: Entity, ident: &str, indent2: &str) {
-	let entity_ref = world.entity(entity);
-	let all_component_names = entity_ref.archetype().components().into_iter()
-		.map(|component_id| world.components().get_info(*component_id).unwrap().name().split("::").last().unwrap().to_string())
-		.collect::<Vec<String>>().join(", ");
-		
-	if let Some(name) = world.get::<Name>(entity) {
-		println!("{ident}Entity: {:?} \"{}\", [{}]", entity, name.0.as_str(), all_component_names);
-	} else {
-		println!("{ident}Entity: {:?}, [{}]", entity, all_component_names);
-	}
-	
-	// No idea how to implement this generically
-	if let Some(skinned_mesh) = world.get::<bevy::mesh::skinning::SkinnedMesh>(entity) {
-		println!("{indent2}  SkinnedMesh: {:?}", skinned_mesh);
-	}
-	
-	if let Some(children) = world.get::<Children>(entity) {
-		let last = children.len()-1;
-		for (i, child) in children.iter().enumerate() {
-			// Generate the nice ascii tree indentation
-			let indent  = format!("{}{}", indent2, (if i==last {"└─"} else {"├─"}));
-			let indent2 = format!("{}{}", indent2, (if i==last {"  "} else {"│ "}));
-			
-			_log_entity_tree(world, child, indent.as_str(), indent2.as_str());
-		}
-	}
-}
-fn _log_entity_trees<F: QueryFilter> (world: &World, root_entities: Query<Entity, F>) {
-	for entity in &root_entities {
-		if world.get::<ChildOf>(entity).is_none() {
-			_log_entity_tree(world, entity, "", "");
-		}
-	}
-}
-
-fn _log_scene_hierarchy (world: &World, query: Query<Entity>) {
-	_log_entity_trees(world, query);
-	//println!("------------------------");
 }
