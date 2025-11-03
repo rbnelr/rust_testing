@@ -26,9 +26,9 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::f32::consts::*;
 
-//use bevy_egui::*;
-//use bevy_inspector_egui::prelude::*;
-//use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use bevy_egui::*;
+use bevy_inspector_egui::prelude::*;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 use bevy::log::LogPlugin;
 use tracing_subscriber::{filter::LevelFilter, layer::SubscriberExt, Layer};
@@ -120,13 +120,13 @@ fn main() {
 			
 		plugins
 	});
-	//app.add_plugins((
-	//	EguiPlugin { 
-	//		//bindless_mode_array_size: None,
-	//		..default()
-	//	},
-	//	WorldInspectorPlugin::new(), // TODO: Inspector only appears in first camera, should appear in all cameras
-	//));
+	app.add_plugins((
+		EguiPlugin { 
+			//bindless_mode_array_size: None,
+			..default()
+		},
+		WorldInspectorPlugin::new(), // TODO: Inspector only appears in first camera, should appear in all cameras
+	));
 	app.add_plugins((
 		serialization::SerializationPlugin,
 		imgui::ImguiPlugin,

@@ -1,17 +1,19 @@
 use bevy::prelude::*;
+use bevy::ecs::system::{SystemState};
 use bevy::window::{CursorIcon, CursorOptions, PrimaryWindow, WindowMode, PresentMode};
 use serde::{Serialize, Deserialize};
 use crate::phases::Phase;
 use crate::serialization::{RenderSettings, Settings};
+use bevy_egui::*;
 
 pub struct AppControlPlugin;
 impl Plugin for AppControlPlugin {
 	fn build(&self, app: &mut App) {
 		app
 			.insert_resource(WindowSettings::default())
-			.add_systems(Update, (
-				window_control.in_set(Phase::Windowing),
-			));
+			.add_systems(Update, window_control.in_set(Phase::Windowing))
+			.add_systems(EguiPrimaryContextPass, ui_example_system //.in_set(Phase::Windowing) execute UI first?
+			);
 	}
 }
 
@@ -89,3 +91,90 @@ fn window_control(
 	
 	WindowSettings::update(window.into_inner(), settings);
 }
+
+fn ui_example_system(
+	world: &mut World,
+	sys: &mut SystemState<(
+		Res<Time>,
+		ResMut<WindowSettings>,
+		MessageWriter<AppExit>,
+		Commands,
+	)>
+) -> Result {
+	let mut egui_context = world
+		.query_filtered::<&mut EguiContext, With<PrimaryEguiContext>>()
+		.single_mut(world)?.clone();
+	
+	egui::Window::new("Main").show(egui_context.get_mut(), |ui| {
+		
+		let mut do_load = false;
+		let mut do_save = false;
+		
+		let (
+			time,
+			mut window_settings,
+			mut exit,
+			commands,
+		) = sys.get_mut(world);
+		
+		ui.label("world");
+	});
+	Ok(())
+}
+
+/*
+let ui = ctx.ui();
+	let gui = ui.window("Hello world");
+	gui
+		.size([300.0, 100.0], Condition::FirstUseEver)
+		.position([0.0, 0.0], Condition::FirstUseEver)
+		.build(|| {
+			let mut ws = *window_settings;
+			
+			ui.checkbox("Fullscreen", &mut ws.fullscreen);
+			
+			ui.same_line();
+			ui.checkbox("Borderless", &mut ws.fullscreen_borderless);
+			
+			ui.same_line();
+			ui.checkbox("Vsync", &mut ws.vsync);
+			
+			if ws != *window_settings { // for change-detection
+				*window_settings = ws;
+			}
+			
+			ui.same_line();
+			ui.checkbox("ImGui Demo", &mut state.demo_window_open);
+			
+			// TODO: are these colors correct like this?
+			let color1 = ui.push_style_color(StyleColor::Button, Color::srgba_u8(250, 66, 66, 102).to_linear().to_f32_array());
+			let color2 = ui.push_style_color(StyleColor::ButtonActive, Color::srgba_u8(250, 66, 66, 255).to_linear().to_f32_array());
+			let color3 = ui.push_style_color(StyleColor::ButtonHovered, Color::srgba_u8(250, 15, 15, 255).to_linear().to_f32_array());
+			if ui.button("Quit") {
+				exit.write(AppExit::Success);
+			}
+			color3.pop();
+			color2.pop();
+			color1.pop();
+			
+			ui.text("debug.json:");
+			ui.same_line();
+			do_load = ui.button("Load [;]");
+			ui.same_line();
+			do_save = ui.button("Save [']");
+			
+			ui.separator();
+			imgui_fps_histogram(&ui, &mut state, &time);
+		});
+	
+	if state.demo_window_open {
+		ctx.ui().show_demo_window(&mut state.demo_window_open);
+	}
+	
+	if do_load {
+		world.run_system_once(load);
+	}
+	else if do_save {
+		world.run_system_once(save);
+	}
+*/

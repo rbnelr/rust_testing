@@ -34,9 +34,9 @@ fn update(
 	
 	if keyboard.just_pressed(KeyCode::KeyP) {
 		state.viewing_debug_cam = !state.viewing_debug_cam;
-  
+		
 		if state.viewing_debug_cam {
-            *debug_transf = *main_transf;
+			*debug_transf = *main_transf;
 		}
 	}
 	

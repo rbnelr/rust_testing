@@ -14,7 +14,7 @@ pub struct FlycamPlugin;
 impl Plugin for FlycamPlugin {
 	fn build(&self, app: &mut App) {
 		app
-			.add_systems(Startup, prepare_cursor)
+			.add_systems(Update, update_cursor.before(update_camera))
 			.add_systems(Update, update_camera.in_set(Phase::CameraUpdate));
 	}
 }
@@ -261,13 +261,9 @@ fn update_camera(
 		mut mouse_motion: MessageReader<MouseMotion>,
 		mut mouse_wheel: MessageReader<MouseWheel>,
 		mut cursor_options: Single<&mut CursorOptions>,
-		mut cursor_query: Single<(&mut CursorIcon, &Window)>,
 		mut query: Query<(&mut Transform, &mut Flycam, &Camera, &mut Projection), With<Camera3d>>) {
 	
 	let mut cursor_opt = cursor_options.into_inner();
-	let (mut cursor_icon, window) = cursor_query.into_inner();
-	
-	handle_cursor(&keyboard, &mouse, &window, &mut cursor_opt, &mut cursor_icon);
 	
 	for (mut transf, mut flycam, cam, mut proj) in &mut query {
 		if cam.is_active { // disabling rendering also disables controls
@@ -279,41 +275,59 @@ fn update_camera(
 	}
 }
 
-// TODO: Should not be tied to a single camera type like this
-// prepare_cursor needs to happen anyway, and cursor visible, grab_mode and icon need to be set depending on context
-// some game states might want cursor visible (but locked and other icon on a certain key, like game and debug cameras)
-// others might want it invisible and locked always (like FPS camera, ex. walk around as citizen in city buidler)
-// some UI states might have various icons to use etc.
-// sounds like cursor should simply be updated every frame using data from various places like: Cursor::set(grab: Free/Locked, icon: Normal/AllScroll/Invisible)
-// Though either this means using a global function to set (and having it set state how it wants)
-// or simply setting data in a Cursor Resource, and a system that applies it
-fn prepare_cursor(mut commands: Commands, window: Single<Entity, With<Window>>) {
-	let icon : CursorIcon = SystemCursorIcon::Default.into();
-	commands.entity(*window).insert(icon); // clone?
-}
-fn handle_cursor(
-		keyboard: &Res<ButtonInput<KeyCode>>,
-		mouse: &Res<ButtonInput<MouseButton>>,
-		window: &Window,
-		cursor_options: &mut CursorOptions,
-		cursor_icon: &mut CursorIcon) {
+// TODO: move this somewhere else but make it possible for other systems to share control of the cursor in some way
+// Ex: In-game Translation gizmos might want to change cursor icon, but not lock it, etc.
+// Maybe other users of cursor might want to know about mouselook and freeze during it etc.
+// Cameras then could ask cursor for mouselook state (ie. MOUSELOOK_BTN moves to cursor system)
+
+// Make sure to add and remove CursorIcon from Window when needed
+// both writing SystemCursorIcon::Default to it every frame and writing SystemCursorIcon::Default to it only to reset
+// both cause flickering when resizing window (bug in bevy?)
+fn update_cursor(
+		keyboard: Res<ButtonInput<KeyCode>>,
+		mouse: Res<ButtonInput<MouseButton>>,
+		window: Single<(Entity, &Window)>,
+		mut cursor_options: Single<&mut CursorOptions>,
+		mut commands: Commands) {
 	
+	let (window_e, window) = *window;
+	
+	// Handle alt-tab gracefully by fulling resetting everything
+	if !window.focused {
+		//println!("No Window Focus!");
+		cursor_options.visible = true;
+		cursor_options.grab_mode = CursorGrabMode::None;
+		commands.entity(window_e).remove::<CursorIcon>();
+		return;
+	}
+	
+	// Toggle mouse cursor visible via F2 (invisible cursor = FPS style mouselook)
 	if keyboard.just_pressed(KeyCode::F2) {
+		//println!("Toggle Cursor Visible");
 		cursor_options.visible = !cursor_options.visible;
 	}
 	
-	if cursor_options.visible && !mouse.pressed(MOUSELOOK_BTN) {
-		cursor_options.grab_mode = CursorGrabMode::None;
-		*cursor_icon = SystemCursorIcon::Default.into();
-	}
-	else {
-		cursor_options.grab_mode = CursorGrabMode::Locked;
-		*cursor_icon = SystemCursorIcon::AllScroll.into();
-	}
+	// Mouselooking using held MOUSELOOK_BTN or when cursor invisible
+	let mouselook = !cursor_options.visible || mouse.pressed(MOUSELOOK_BTN);
+	// Detect mouselook using cursor_options.grab_mode
+	let was_mouselook = cursor_options.grab_mode != CursorGrabMode::None;
 	
-	if !window.focused {
-		cursor_options.visible = true;
-		cursor_options.grab_mode = CursorGrabMode::None;
-		*cursor_icon = SystemCursorIcon::Default.into();
+	// Only update grab_mode and cursor_icon when needed instead of overwriting every frame to avoid glitches
+	// TODO: 
+	if mouselook != was_mouselook {
+		//println!("Toggle Mouselook");
+		if mouselook {
+			//println!("Mouselook=1");
+			// Lock mouse cursor, which means freeze in place, and change icon to a "We are mouselooking/dragging" style icon
+			// This feels more professional and clean than making it invisible or only constraining it to the window
+			cursor_options.grab_mode = CursorGrabMode::Locked;
+			let icon : CursorIcon = SystemCursorIcon::AllScroll.into();
+			commands.entity(window_e).insert(icon);
+		}
+		else {
+			//println!("Mouselook=0");
+			cursor_options.grab_mode = CursorGrabMode::None;
+			commands.entity(window_e).remove::<CursorIcon>();
+		}
 	}
 }

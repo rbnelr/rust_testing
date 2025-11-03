@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-#bevy = { version = "0.17.2", features = ["dynamic_linking", "bevy_dev_tools"] }
-bevy = { version = "0.17.2", features = ["bevy_dev_tools"] }
+bevy = { version = "0.17.2", features = ["dynamic_linking", "bevy_dev_tools"] }
+#bevy = { version = "0.17.2", features = ["bevy_dev_tools"] }
 #bevy = { version = "0.17.2", features = ["trace", "trace_tracy"] }
 
 #tracing-tracy = { version = "0.11.4", default-features = false, features = [
@@ -19,8 +19,8 @@ bevy = { version = "0.17.2", features = ["bevy_dev_tools"] }
 #	"flush-on-exit"
 #]}
 
-#bevy_egui = "0.38.0"
-#bevy-inspector-egui = "0.35.0"
+bevy_egui = "0.38.0"
+bevy-inspector-egui = "0.35.0"
 #bevy_mod_imgui = "0.7.2"
 bevy_mod_imgui = { git = "https://github.com/jbrd/bevy_mod_imgui", branch = "main" } # 0.8 needed for bevy 0.17 but not yet in crates.io ?
 imgui = "0.12.0"
@@ -35,7 +35,8 @@ tracing-subscriber = "0.3.20"
 
 # Temp local fix for dx12 push constants issue until PR is possibly accepted
 [patch.crates-io]
-bevy_egui = { path = "../bevy_egui" }
+#bevy_egui = { path = "../bevy_egui" }
+bevy_egui = { git = "https://github.com/rbnelr/bevy_egui.git" }
 
 # Not actually working?
 #[dev-dependencies]
@@ -43,9 +44,10 @@ bevy_egui = { path = "../bevy_egui" }
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
-opt-level = 1
+#opt-level = 1
 #opt-level = 3
 #debug = 1
+opt-level = 0
 
 # Enable a large amount of optimization in the dev profile for dependencies.
 [profile.dev.package."*"]
