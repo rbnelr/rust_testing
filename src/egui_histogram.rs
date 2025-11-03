@@ -5,20 +5,19 @@ use bevy_egui::egui::{
 	emath, epaint,
 	lerp, pos2, remap, vec2,
 };
+use std::collections::VecDeque;
 
 #[derive(Resource, Reflect)]
 #[reflect(Resource)]
 pub struct Frametimes {
-	frametimes: Vec<f32>,
-	frametime_cur: usize,
+	frametimes: VecDeque<f32>,
 	frametimes_avg_rate : Timer,
 	frametime_avg : FrametimeAvg,
 }
 impl Default for Frametimes {
 	fn default() -> Self {
 		Self{
-			frametimes: vec![0.0; 120],
-			frametime_cur: 0,
+			frametimes: VecDeque::with_capacity(64),
 			frametimes_avg_rate: {
 				let freq = std::time::Duration::from_secs_f32(0.5);
 				Timer::new(freq, TimerMode::Repeating)
@@ -29,10 +28,25 @@ impl Default for Frametimes {
 }
 impl Frametimes {
 	pub fn gui(&mut self, ui: &mut Ui, time: Res<Time>) {
-		let idx = self.frametime_cur;
-		self.frametimes[idx] = time.delta_secs();
-		self.frametime_cur = (self.frametime_cur + 1) % self.frametimes.len();
 		
+		// enforce max size
+		//let width = ui.max_rect().width().floor(); // TODO: how to actually make it fill available width and use this or last frames width to control count?
+		let width : f32 = 380.0;
+		let height : f32 = 60.0;
+		
+		let bar_width : f32 = 1.0;
+		let count = (width / bar_width).floor() as usize;
+		//let width = bar_width * count as f32;
+		
+		let max_y : f32 = 20.0;
+		
+		while self.frametimes.len() >= count {
+			self.frametimes.pop_front();
+		}
+		// push new measurement
+		self.frametimes.push_back(time.delta_secs());
+		
+		// update averages
 		if self.frametimes_avg_rate.tick(time.delta()).just_finished() {
 			self.frametime_avg = calc_frametime_avg(&self.frametimes);
 		}
@@ -42,43 +56,47 @@ impl Frametimes {
 		ui.label(format!("avg: {:5.1} hz ({:6.3} ms  min: {:6.3}  max: {:6.3}  stddev: {:6.3})",
 						avg_hz, avg.mean * 1000.0, avg.min * 1000.0, avg.max * 1000.0, avg.std_dev * 1000.0));
 		
-		self.plot_histogram(ui, &self.frametimes);
-		
-		//ui.plot("Frametimes", ft.frametimes.as_slice())
-		//	.scale_min(0.0)
-		//	.scale_max(20.0 / 1000.0)
-		//	.graph_size([ 0.0, 60.0 ])
-		//	.build();
-	}
-	
-	pub fn plot_histogram(&self, ui: &mut Ui, numbers: &Vec<f32>) {
 		Frame::canvas(ui.style()).show(ui, |ui| {
 			ui.ctx().request_repaint();
 			
-			let n = numbers.len();
-			let max_y : f32 = 20.0;
-			let height : f32 = 60.0;
-			
-			let desired_size = vec2(ui.available_width(), height);
+			let desired_size = vec2(width, height);
 			let (_id, rect) = ui.allocate_space(desired_size);
-			let width = desired_size.x;
-			let bar_width = width / (n as f32);
-
-			let to_screen =
-				emath::RectTransform::from_to(Rect::from_x_y_ranges(0.0..=n as f32, 0.0..=max_y), rect);
-
+			
 			let mut shapes = vec![];
 			
-			for i in 0..n {
-				let a = to_screen * Pos2::new(i as f32, max_y);
-				let b = to_screen * Pos2::new(i as f32, numbers[i] * 1000.0);
-				shapes.push(epaint::Shape::line_segment(
-					[a, b],
-					Stroke { width: bar_width.floor().max(0.0), color:Color32::WHITE }
+			let to_screen = emath::RectTransform::from_to(Rect::from_x_y_ranges(0.0..=width, max_y..=0.0), rect);
+			
+			let thres : [f32; 2] = [1000.0 / 120.0, 1000.0 / 60.0];
+			let cols = [Color32::GREEN, Color32::YELLOW, Color32::RED];
+			
+			let mut x = 0;
+			for val in &self.frametimes {
+				shapes.push(epaint::Shape::line_segment([
+						to_screen * Pos2::new((x as f32 + 0.5) * bar_width, 0.0),
+						to_screen * Pos2::new((x as f32 + 0.5) * bar_width, val * 1000.0)
+					],
+					Stroke { width: bar_width, color: {
+							let mut col = cols[2];
+							for i in 0..2 {
+								if val * 1000.0 <= thres[i] { col = cols[i]; break; }
+							};
+							Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 200)
+						}
+					}
+				));
+				x += 1;
+			}
+			
+			for i in 0..2 {
+				shapes.push(epaint::Shape::line_segment([
+						to_screen * Pos2::new(0.0, thres[i]),
+						to_screen * Pos2::new(width, thres[i])
+					],
+					Stroke { width: 1.0, color: Color32::from_rgba_unmultiplied(cols[i].r(), cols[i].g(), cols[i].b(), 150) }
 				));
 			}
 			
-			ui.painter().extend(shapes);
+			ui.painter().with_clip_rect(rect).extend(shapes);
 		});
 	}
 }
@@ -90,7 +108,7 @@ struct FrametimeAvg {
 	max: f32,
 	std_dev: f32,
 }
-fn calc_frametime_avg (frametimes: &Vec<f32>) -> FrametimeAvg {
+fn calc_frametime_avg (frametimes: &VecDeque<f32>) -> FrametimeAvg {
 	let total : f32 = frametimes.iter().sum();
 	let count = frametimes.len() as f32;
 	let mean = total / frametimes.len() as f32;
