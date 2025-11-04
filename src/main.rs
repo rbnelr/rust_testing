@@ -2,7 +2,6 @@
 
 mod phases;
 mod serialization;
-mod imgui;
 mod egui_histogram;
 mod app_control;
 mod debug_camera;
@@ -27,50 +26,24 @@ use bevy_egui::*;
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
-use bevy::log::LogPlugin;
-use tracing_subscriber::{filter::LevelFilter, layer::SubscriberExt, Layer};
-
-/*
-// Custom logging to set breakpoins on engine errors
-#[cfg(OVERRIDE_LOG)]
-struct MyCustomLayer;
-#[cfg(OVERRIDE_LOG)]
-impl MyCustomLayer {
-	fn my_logging_function(&self, event: &tracing::Event<'_>) {
-		println!("{:?}", event);
-	}
-}
-#[cfg(OVERRIDE_LOG)]
-impl<S> Layer<S> for MyCustomLayer
-where
-	S: tracing::Subscriber,
-{
-	fn on_event(
-		&self,
-		event: &tracing::Event<'_>,
-		_ctx: tracing_subscriber::layer::Context<'_, S>,
-	) {
-		self.my_logging_function(event);
-	}
-}
-*/
-
 fn main() {
-	let asset_path = std::env::current_dir().unwrap()
-		.join("assets")
-		.to_string_lossy().to_string();
-		
-	println!("Working directory: {:?}", std::env::current_dir().unwrap());
-	println!("Exe path: {:?}", std::env::current_exe().unwrap());
-	println!("Asset path: {:?}", asset_path);
-	
-	let settings = serialization::load_settings();
-	
 	let mut app = App::new();
 	app.configure_schedules(ScheduleBuildSettings {
 		ambiguity_detection: LogLevel::Error,
 		..default()
 	});
+	
+	
+	let asset_path = std::env::current_dir().unwrap()
+		.join("assets")
+		.to_string_lossy().to_string();
+	
+	// info!() not working in main, but works inside serialization::early_load_settings, what!?
+	println!("Working directory: {:?}", std::env::current_dir().unwrap());
+	println!("Exe path: {:?}", std::env::current_exe().unwrap());
+	println!("Asset path: {:?}", asset_path);
+	
+	let settings = serialization::early_load_settings();
 	
 	app.add_plugins({
 		let mut plugins = DefaultPlugins
@@ -106,15 +79,6 @@ fn main() {
 			..default()
 		});
 		
-		/*{
-			plugins = plugins.set(LogPlugin {
-				filter: "".to_string(),
-				level: bevy::log::Level::WARN,
-				custom_layer: |_app| Some(Box::new(MyCustomLayer)),
-				..default()
-			});
-		}*/
-			
 		plugins
 	});
 	app.insert_resource(EguiGlobalSettings {
@@ -126,8 +90,6 @@ fn main() {
 		WorldInspectorPlugin::new(),
 	));
 	app.add_plugins((
-		serialization::SerializationPlugin,
-		imgui::ImguiPlugin,
 		app_control::AppControlPlugin,
 		debug_camera::DebugCameraPlugin,
 		flycam::FlycamPlugin,
@@ -138,16 +100,17 @@ fn main() {
 	
 	app.add_systems(Startup, (
 		startup,
-		spawn_animated_gltf
+		spawn_animated_gltf,
 	));
 	
 	app.add_systems(Update, (
 		update_animation,
 	));
-		//.add_systems(Update, _log_scene_hierarchy)
 	
 	phases::update_schedule_configs(&mut app);
-	serialization::apply_settings(app.world_mut(), settings);
+	
+	// save to execute in main (outside of any system)?
+	serialization::load_settings(app.world_mut(), settings);
 	
 	app.run();
 }
@@ -177,7 +140,7 @@ fn startup(
 			clear_color: ClearColorConfig::Custom(Color::NONE),
 			..default()
 		},
-		Name::new("Camera"),
+		Name::new("EguiCamera"),
 	));
 	
 	commands.spawn((
@@ -187,7 +150,7 @@ fn startup(
 		bevy::render::view::Hdr,
 		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
 		bevy::post_process::bloom::Bloom::NATURAL,
-		Name::new("Camera"),
+		Name::new("MainCamera"),
 			Mesh3d(cube_mesh.clone()),
 			MeshMaterial3d(red.clone()), // just for debugging
 	));

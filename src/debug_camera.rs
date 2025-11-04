@@ -8,7 +8,6 @@ impl Plugin for DebugCameraPlugin {
 		app
 			.insert_resource(DebugCameraState::default())
 			.add_systems(Update, update
-			.after(Phase::SerializationAndImgui)
 			.before(Phase::CameraUpdate)
 		);
 	}

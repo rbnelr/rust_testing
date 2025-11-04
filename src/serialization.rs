@@ -1,128 +1,111 @@
 use bevy::prelude::*;
 use bevy::ecs::system::{RunSystemOnce, SystemState};
-use bevy_mod_imgui::ImguiContext;
-use bevy_mod_imgui::prelude::{Condition, StyleColor};
 use serde::{Serialize, Deserialize};
 use serde_json;
+use bevy_serde_lens::{SerializeResource, WorldExtension};
 use crate::app_control::WindowSettings;
-use bevy_mod_imgui::prelude::*;
-use crate::phases::Phase;
-
-pub struct SerializationPlugin;
-impl Plugin for SerializationPlugin {
-	fn build(&self, app: &mut App) {
-		app
-			.add_systems(Startup, load) // Load at startup
-			.add_systems(Update,
-				save_load_controls.in_set(Phase::SerializationAndImgui)
-			);
-	}
-}
 
 const SETTINGS_FILE: &'static str = "settings.json";
 
-#[derive(Resource, Reflect, Serialize, Deserialize, Clone)]
+#[derive(Resource, Reflect, Clone, Serialize, Deserialize)]
 #[reflect(Resource)]
 pub struct RenderSettings {
 	pub backends: String,
 	pub disable_validation_in_debug: bool,
 }
-
-#[derive(Serialize, Deserialize)]
-pub struct Settings {
-	pub render: RenderSettings,
-	window: WindowSettings,
-}
-
-pub fn save(
-	world: &mut World,
-	params: &mut SystemState<(
-		Option<Res<RenderSettings>>,
-		Res<WindowSettings>,
-	)>
-) {
-	let (
-		render_settings,
-		window_settings,
-	) = params.get(world);
-	
-	let render_settings = match render_settings {
-		Some(s) => s.clone(),
-		_ => RenderSettings {
-			backends: "vulkan, dx12, opengl, webgpu".to_string(),
+impl Default for RenderSettings {
+	fn default() -> Self {
+		Self {
+			backends: "vk, dx12, gl".into(),
 			disable_validation_in_debug: true,
 		}
-	};
+	}
+}
+
+pub struct Settings {
+	window: WindowSettings,
+	pub render: RenderSettings,
+}
+
+type SettingsFile = bevy_serde_lens::batch!(
+	SerializeResource<WindowSettings>,
+	SerializeResource<RenderSettings>,
 	
-	let settings = Settings{
-		render: render_settings,
-		window: *window_settings
-	};
-	
+);
+
+pub fn save(world: &mut World) {
 	let mut writer = Vec::with_capacity(1024);
 	let tabs_pretty = serde_json::ser::PrettyFormatter::with_indent(b"\t");
 	let mut ser = serde_json::Serializer::with_formatter(&mut writer, tabs_pretty);
 	
-	if serde::Serialize::serialize(&settings, &mut ser).is_ok() {
+	if serde::Serialize::serialize(&world.serialize_lens::<SettingsFile>(), &mut ser).is_ok() {
 		if std::fs::write(SETTINGS_FILE, writer).is_ok() {
-			println!("Saved!");
+			info!("Saved!");
 			return;
 		}
 	}
 	
-	println!("Failed to save {SETTINGS_FILE}!");
+	warn!("Failed to save {SETTINGS_FILE}!");
 }
+
+// Early load RenderSettings to allow backend selection before bevy is actually loaded and defer 
+pub struct LoadResult {
+	loaded_json: serde_json::Value,
+	pub render: RenderSettings,
+}
+
 // load_settings() + apply_settings() Allows loading Settings before app starts
-pub fn load_settings() -> Option<Settings> {
+pub fn early_load_settings() -> Option<LoadResult> {
 	if let Ok(json_str) = std::fs::read_to_string(SETTINGS_FILE) {
-		if let Ok(settings) = serde_json::from_str::<Settings>(&json_str) {
-			println!("Loaded!");
-			return settings.into();
+		if let Ok(json) = serde_json::from_str::<serde_json::Value>(&json_str) {
+			let render : RenderSettings = serde_json::from_value(json["RenderSettings"].clone()).unwrap_or_default();
+			
+			info!("Early loaded {SETTINGS_FILE}!");
+			return LoadResult {
+				loaded_json: json,
+				render
+			}.into();
 		}
 	}
 	
-	println!("Failed to load {SETTINGS_FILE}!");
+	warn!("Failed to load {SETTINGS_FILE}!");
 	None
 }
-pub fn apply_settings(
+pub fn load_settings(
 	world: &mut World,
-	settings: Option<Settings>
+	settings: Option<LoadResult>
 ) {
-	let mut params: SystemState<(
-		ResMut<WindowSettings>,
-		Commands,
-	)> = SystemState::new(world);
-	let (
-		mut window_settings,
-		mut commands,
-	) = params.get_mut(world);
+	//let mut params: SystemState<(
+	//	ResMut<WindowSettings>,
+	//	Commands,
+	//)> = SystemState::new(world);
+	//let (
+	//	mut window_settings,
+	//	mut commands,
+	//) = params.get_mut(world);
+	//
+	//if let Some(settings) = settings {
+	//	commands.insert_resource(settings.render);
+	//	*window_settings = settings.window;
+	//}
+	//
+	//params.apply(world);
 	
 	if let Some(settings) = settings {
-		commands.insert_resource(settings.render);
-		*window_settings = settings.window;
+		world.despawn_bound_objects::<SettingsFile>();
+		world.deserialize_scope(|| {
+			let res = serde_json::from_value::<bevy_serde_lens::InWorld<SettingsFile>>(settings.loaded_json);
+			if let Err(error) = res {
+				info!("Err {error}!");
+			}
+		});
+		
+		info!("Fully Loaded {SETTINGS_FILE}!");
 	}
 	
-	params.apply(world);
+	//world.insert_resource(RenderSettings::default());
 }
 pub fn load(world: &mut World) {
-	let settings = load_settings();
-	apply_settings(world, settings);
-}
-
-fn save_load_controls(
-	world: &mut World,
-	params: &mut SystemState<(
-		Res<ButtonInput<KeyCode>>
-	)>
-) {
-	let (do_load, do_save) = {
-		let keyboard = params.get(world);
-		(keyboard.just_pressed(KeyCode::Semicolon), keyboard.just_pressed(KeyCode::Quote))
-	};
-	if do_load {
-		world.run_system_once(load);
-	}
-	else if do_save {
-		world.run_system_once(save);
-	}
+	let res = early_load_settings();
+	load_settings(world, res);
 }

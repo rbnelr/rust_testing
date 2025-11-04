@@ -1,24 +1,26 @@
 use bevy::prelude::*;
 use bevy::ecs::system::{SystemState, RunSystemOnce};
 use bevy::window::{CursorIcon, CursorOptions, PrimaryWindow, WindowMode, PresentMode};
-use serde::{Serialize, Deserialize};
-use crate::phases::Phase;
-use crate::serialization::{RenderSettings, Settings, load, save};
-
 use bevy_egui::*;
 use egui::{Ui, RichText, Color32};
+use crate::phases::Phase;
+use serde::{Serialize, Deserialize};
+use crate::serialization;
 
 pub struct AppControlPlugin;
 impl Plugin for AppControlPlugin {
 	fn build(&self, app: &mut App) {
-		app
-			.insert_resource(WindowSettings::default())
-			.add_systems(Update, window_control.in_set(Phase::Windowing))
-			.add_systems(EguiPrimaryContextPass, ui_example_system); //.in_set(Phase::Windowing) execute UI first?);
+		//app.insert_resource(WindowSettings::default());
+		app.add_systems(Startup, serialization::load); // Load at startup
+		app.add_systems(Update, (
+			save_load_controls,
+			window_control.after(save_load_controls)
+		).in_set(Phase::Start));
+		app.add_systems(EguiPrimaryContextPass, main_ui); //.in_set(Phase::Windowing) execute UI first?);
 	}
 }
 
-#[derive(Resource, Reflect, Serialize, Deserialize, Copy, Clone, PartialEq)]
+#[derive(Resource, Reflect, Copy, Clone, PartialEq, Serialize, Deserialize)]
 #[reflect(Resource)]
 pub struct WindowSettings {
 	// Ideally I'd be able to restore windowing state after restarting
@@ -60,25 +62,6 @@ impl WindowSettings {
 	}
 }
 
-// Can potentially derive settings from bevy state like this (without WindowSettings being a Resource)
-// could be useful for other applications, but WindowSettings in my case need to be Resource
-//impl WindowSettings {
-//	fn save(world: &mut World) -> Self {
-//
-//		let mut system_state: SystemState<Single<&Window>> = SystemState::new(world);
-//		let (query) = system_state.get(world);
-//		let w = query.into_inner();
-//
-//		Self {
-//			windowed_position: IVec2::new(0,0),
-//			windowed_size: w.physical_size(),
-//			fullscreen: matches!(w.mode, WindowMode::Fullscreen(_, _)),
-//			fullscreen_borderless: matches!(w.mode, WindowMode::BorderlessFullscreen(_)),
-//			vsync: matches!(w.present_mode, PresentMode::AutoVsync),
-//		}
-//	}
-//}
-
 fn window_control(
 	keyboard: Res<ButtonInput<KeyCode>>,
 	window: Single<&mut Window>,
@@ -93,7 +76,25 @@ fn window_control(
 	WindowSettings::update(window.into_inner(), settings);
 }
 
-fn ui_example_system(
+pub fn save_load_controls(
+	world: &mut World,
+	params: &mut SystemState<(
+		Res<ButtonInput<KeyCode>>
+	)>
+) {
+	let (do_load, do_save) = {
+		let keyboard = params.get(world);
+		(keyboard.just_pressed(KeyCode::Semicolon), keyboard.just_pressed(KeyCode::Quote))
+	};
+	if do_load {
+		world.run_system_once(serialization::load);
+	}
+	else if do_save {
+		world.run_system_once(serialization::save);
+	}
+}
+
+fn main_ui(
 	world: &mut World,
 	sys: &mut SystemState<(
 		Res<Time>,
@@ -154,10 +155,10 @@ fn ui_example_system(
 	});
 	
 	if do_load {
-		world.run_system_once(load);
+		world.run_system_once(serialization::load);
 	}
 	else if do_save {
-		world.run_system_once(save);
+		world.run_system_once(serialization::save);
 	}
 	
 	Ok(())

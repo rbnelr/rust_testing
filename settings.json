@@ -1,11 +1,15 @@
 {
-	"render": {
-		"backends": "vk, dx12",
+	"WindowSettings": {
+		"fullscreen": true,
+		"fullscreen_borderless": true,
+		"vsync": false
+	},
+	"RenderSettings": {
+		"backends": "vk, dx12, gl",
 		"disable_validation_in_debug": true
 	},
-	"window": {
-		"fullscreen": false,
-		"fullscreen_borderless": true,
-		"vsync": true
+	"RenderSettings": {
+		"backends": "vk, dx12, gl",
+		"disable_validation_in_debug": true
 	}
 }
