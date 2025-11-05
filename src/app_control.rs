@@ -4,14 +4,13 @@ use bevy::window::{CursorIcon, CursorOptions, PrimaryWindow, WindowMode, Present
 use bevy_egui::*;
 use egui::{Ui, RichText, Color32};
 use crate::phases::Phase;
-use serde::{Serialize, Deserialize};
-use crate::serialization;
+use crate::serialization::*;
+use crate::settings_file;
 
 pub struct AppControlPlugin;
 impl Plugin for AppControlPlugin {
 	fn build(&self, app: &mut App) {
-		//app.insert_resource(WindowSettings::default());
-		app.add_systems(Startup, serialization::load); // Load at startup
+		app.insert_resource(WindowSettings::default());
 		app.add_systems(Update, (
 			save_load_controls,
 			window_control.after(save_load_controls)
@@ -20,7 +19,7 @@ impl Plugin for AppControlPlugin {
 	}
 }
 
-#[derive(Resource, Reflect, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Resource, Reflect, Copy, Clone, PartialEq)]
 #[reflect(Resource)]
 pub struct WindowSettings {
 	// Ideally I'd be able to restore windowing state after restarting
@@ -42,6 +41,8 @@ impl Default for WindowSettings {
 		}
 	}
 }
+serializer!(WindowSettings, fullscreen, fullscreen_borderless, vsync);
+serializer_world!(WindowSettings, Res<WindowSettings>);
 
 pub const APP_NAME : &str = "Bevy Test Project";
 
@@ -87,10 +88,10 @@ pub fn save_load_controls(
 		(keyboard.just_pressed(KeyCode::Semicolon), keyboard.just_pressed(KeyCode::Quote))
 	};
 	if do_load {
-		world.run_system_once(serialization::load);
+		world.run_system_once(settings_file::load);
 	}
 	else if do_save {
-		world.run_system_once(serialization::save);
+		world.run_system_once(settings_file::save);
 	}
 }
 
@@ -155,10 +156,10 @@ fn main_ui(
 	});
 	
 	if do_load {
-		world.run_system_once(serialization::load);
+		world.run_system_once(settings_file::load);
 	}
 	else if do_save {
-		world.run_system_once(serialization::save);
+		world.run_system_once(settings_file::save);
 	}
 	
 	Ok(())

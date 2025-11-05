@@ -2,6 +2,7 @@
 
 mod phases;
 mod serialization;
+mod settings_file;
 mod egui_histogram;
 mod app_control;
 mod debug_camera;
@@ -25,6 +26,9 @@ use std::f32::consts::*;
 use bevy_egui::*;
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use serialization::*;
+use debug_camera::{DebugCamera, MainCamera};
+use flycam::Flycam;
 
 fn main() {
 	let mut app = App::new();
@@ -43,7 +47,8 @@ fn main() {
 	println!("Exe path: {:?}", std::env::current_exe().unwrap());
 	println!("Asset path: {:?}", asset_path);
 	
-	let settings = serialization::early_load_settings();
+	let settings = settings_file::early_load_settings();
+	let settings2 = settings.clone();
 	
 	app.add_plugins({
 		let mut plugins = DefaultPlugins
@@ -101,6 +106,9 @@ fn main() {
 	app.add_systems(Startup, (
 		startup,
 		spawn_animated_gltf,
+		(move |world: &mut World| {
+			settings_file::load_settings(world, settings.clone());
+		}).after(startup)
 	));
 	
 	app.add_systems(Update, (
@@ -109,11 +117,10 @@ fn main() {
 	
 	phases::update_schedule_configs(&mut app);
 	
-	// save to execute in main (outside of any system)?
-	serialization::load_settings(app.world_mut(), settings);
-	
 	app.run();
 }
+
+serializer_world!(Flycam, Single<Flycam, With<debug_camera::MainCamera>>);
 
 fn startup(
 	mut commands: Commands,
@@ -144,8 +151,8 @@ fn startup(
 	));
 	
 	commands.spawn((
-		debug_camera::MainCamera,
-		flycam::Flycam::new( Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
+		MainCamera,
+		Flycam::new( Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
 		Camera::default(),
 		bevy::render::view::Hdr,
 		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
@@ -155,8 +162,8 @@ fn startup(
 			MeshMaterial3d(red.clone()), // just for debugging
 	));
 	commands.spawn((
-		debug_camera::DebugCamera,
-		flycam::Flycam::new( Transform::from_xyz(2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
+		DebugCamera,
+		Flycam::new( Transform::from_xyz(2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
 		Camera::default(),
 		bevy::render::view::Hdr,
 		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,

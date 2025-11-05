@@ -8,6 +8,7 @@ use core::f32;
 use std::fmt;
 use crate::app_control::WindowSettings;
 use crate::phases::Phase;
+use crate::serialization::*;
 
 pub struct FlycamPlugin;
 
@@ -76,6 +77,7 @@ impl Flycam {
 		)
 	}
 }
+serializer!(Flycam, move_planar, mouse_sens, default_vfov, base_speed, speedup_factor);
 
 fn wrap(x: f32, y: f32) -> f32 {
 	((x % y) + y) % y

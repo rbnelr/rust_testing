@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use crate::flycam::Flycam;
 use crate::phases::Phase;
+use crate::serialization::*;
 
 pub struct DebugCameraPlugin;
 impl Plugin for DebugCameraPlugin {
@@ -21,9 +22,11 @@ pub struct DebugCamera;
 
 #[derive(Resource, Default, Reflect)]
 #[reflect(Resource)]
-struct DebugCameraState {
+pub struct DebugCameraState {
 	viewing_debug_cam : bool,
 }
+serializer!(DebugCameraState, viewing_debug_cam);
+serializer_world!(DebugCameraState, Res<DebugCameraState>);
 
 fn update(
 	mut state: ResMut<DebugCameraState>,
