@@ -41,7 +41,7 @@ impl Default for WindowSettings {
 		}
 	}
 }
-serializer!(WindowSettings, fullscreen, fullscreen_borderless, vsync);
+serializer!(WindowSettings{ fullscreen, fullscreen_borderless, vsync });
 serializer_world!(WindowSettings, Res<WindowSettings>);
 
 pub const APP_NAME : &str = "Bevy Test Project";

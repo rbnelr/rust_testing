@@ -28,7 +28,7 @@ use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use serialization::*;
 use debug_camera::{DebugCamera, MainCamera};
-use flycam::Flycam;
+use flycam::FlycamBundle;
 
 fn main() {
 	let mut app = App::new();
@@ -120,8 +120,6 @@ fn main() {
 	app.run();
 }
 
-serializer_world!(Flycam, Single<Flycam, With<debug_camera::MainCamera>>);
-
 fn startup(
 	mut commands: Commands,
 	mut meshes: ResMut<Assets<Mesh>>,
@@ -152,8 +150,7 @@ fn startup(
 	
 	commands.spawn((
 		MainCamera,
-		Flycam::new( Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
-		Camera::default(),
+		flycam::FlycamBundle::new( Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
 		bevy::render::view::Hdr,
 		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
 		bevy::post_process::bloom::Bloom::NATURAL,
@@ -163,8 +160,7 @@ fn startup(
 	));
 	commands.spawn((
 		DebugCamera,
-		Flycam::new( Transform::from_xyz(2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
-		Camera::default(),
+		flycam::FlycamBundle::new( Transform::from_xyz(2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
 		bevy::render::view::Hdr,
 		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
 		bevy::post_process::bloom::Bloom::NATURAL,

@@ -1,51 +1,89 @@
 use bevy::prelude::*;
 use bevy::ecs::{*, query::*};
 use serde::{Serialize, Deserialize};
+use serde_json::Value as Json;
 
 pub trait Serializer {
+	type SerializeFrom<'a> where Self: 'a;
+	type DeserializeInto<'a> where Self: 'a;
+
 	// Serialize to serde_json value
-	fn serialize(&self) -> serde_json::Value;
+	fn serialize(from: Self::SerializeFrom<'_>) -> Json;
 	// Update existing object from serde_json value
-	fn deserialize(&mut self, json: serde_json::Value);
+	fn deserialize(into: Self::DeserializeInto<'_>, json: Json);
 	
 	// Create object from defaults and serde_json value
-	fn deserialize_new(value: serde_json::Value) -> Self
-	where Self: Default + Sized {
+	fn deserialize_new(value: Json) -> Self
+	where Self: Default + Sized,
+	      for<'a> Self::DeserializeInto<'a>: From<&'a mut Self>,
+	{
 		let mut obj = Self::default();
-		obj.deserialize(value);
+		Self::deserialize((&mut obj).into(), value);
 		obj
 	}
 }
 
 // Rely on serde for serialization of basic types
-impl<T> Serializer for T
+// This blanked impl fails with things like  impl Serializer for (Flycam, Transform)
+//impl<T> Serializer for T
+//where T: Serialize + for<'de> Deserialize<'de> {
+//	fn serialize(&self) -> Json {
+//		serde_json::to_value(self)
+//			.unwrap() // Not sure how serializing something can fail or how to handle
+//	}
+//
+//	fn deserialize(&mut self, json: Json) {
+//		if let Ok(new_val) = serde_json::from_value::<T>(json) {
+//			*self = new_val;
+//		}
+//	}
+//}
+pub trait _SerializerSerde {
+	fn serialize(&self) -> Json;
+	fn deserialize(&mut self, json: Json);
+}
+impl<T> _SerializerSerde for T
 where T: Serialize + for<'de> Deserialize<'de> {
-	fn serialize(&self) -> serde_json::Value {
+	fn serialize(&self) -> Json {
 		serde_json::to_value(self)
 			.unwrap() // Not sure how serializing something can fail or how to handle
 	}
 
-	fn deserialize(&mut self, json: serde_json::Value) {
-		if let Ok(new_val) = serde_json::from_value::<T>(json) {
-			*self = new_val;
+	fn deserialize(&mut self, json: Json) {
+		if let Json::Null = json {
+			// Json value either explicitly null or key missing
+			// don't deserialize, this is intentional behavoir
+		}
+		else {
+			match serde_json::from_value::<T>(json) {
+				Ok(new_val) => {
+					*self = new_val;
+				},
+				Err(err) => {
+					// Json value likely has wrong type, this is important to know
+					panic!(err);
+				}
+			}
 		}
 	}
 }
 
 macro_rules! serializer {
-	($struct:ty, $($field:ident),*) => {
+	($struct:tt { $($field:ident),* }) => {
 		impl crate::serialization::Serializer for $struct {
-			fn serialize(&self) -> serde_json::Value {
+			type SerializeFrom<'a> = &'a $struct;
+			type DeserializeInto<'a> = &'a mut $struct;
+			
+			fn serialize(from: Self::SerializeFrom<'_>) -> Json {
 				serde_json::json!({
-					$(stringify!($field): crate::serialization::Serializer::serialize(&self.$field)),*
+					$(stringify!($field): from.$field.serialize()),*
 				})
 			}
-			fn deserialize(&mut self, mut json: serde_json::Value) {
+			fn deserialize(into: Self::DeserializeInto<'_>, mut json: Json) {
+				if let Json::Null = json { return; }
 				$(
-					// Overwrite field if value exists in json
-					if let Some(value) = json.get_mut(stringify!($field)).take() {
-						self.$field.deserialize(value.take());
-					}
+					// Will deserialize only if field key is found, arrays or missing json container will silently not skip
+					into.$field.deserialize(json[stringify!($field)].take());
 				)*
 			}
 		}
@@ -54,43 +92,8 @@ macro_rules! serializer {
 
 pub trait WorldSerializer {
 	// world mutable to allow getting queries (which are cached)
-	fn serialize(world: &mut World) -> serde_json::Value;
-	fn deserialize(world: &mut World, json: serde_json::Value);
-}
-
-macro_rules! serializer_world {
-	
-	// WorldSerializer with single query
-	($type:tt, $($query_type:tt)+) => {
-		impl WorldSerializer for $type {
-			fn serialize(world: &mut World) -> serde_json::Value {
-				crate::serialization::serialize_world!(world, $($query_type)*)
-			}
-			fn deserialize(world: &mut World, mut json: serde_json::Value) {
-				crate::serialization::deserialize_world!(world, json, $($query_type)*);
-			}
-		}
-	};
-	
-	// WorldSerializer nesting other WorldSerializers into json map
-	($type:tt { $($item:ident : $serializer:ty),* $(,)? }) => {
-		impl WorldSerializer for $type {
-			fn serialize(world: &mut World) -> serde_json::Value {
-				serde_json::json!({
-				$(
-					stringify!($item): <$serializer as WorldSerializer>::serialize(world),
-				)*
-				})
-			}
-			fn deserialize(world: &mut World, mut json: serde_json::Value) {
-				$(
-					if let Some(value) = json.get_mut(stringify!($item)).take() {
-						<$serializer as WorldSerializer>::deserialize(world, value.take());
-					}
-				)*
-			}
-		}
-	};
+	fn serialize(world: &mut World) -> Json;
+	fn deserialize(world: &mut World, json: Json);
 }
 
 // These match:
@@ -103,74 +106,86 @@ macro_rules! serializer_world {
 
 // Do ids like this?
 // item: EntityLookup(Components, IdComponent) => serialize Query<Components> as map { id: component_map }
+macro_rules! serializer_world {
+	
+	// WorldSerializer with single query
+	($type:tt, $($query:tt)+) => {
+		impl WorldSerializer for $type {
+			fn serialize(world: &mut World) -> Json {
+				crate::serialization::serialize_world!(world, $($query)*)
+			}
+			fn deserialize(world: &mut World, mut json: Json) {
+				crate::serialization::deserialize_world!(world, json, $($query)*);
+			}
+		}
+	};
+	
+	// WorldSerializer nesting other WorldSerializers into json map
+	($type:tt { $($item:ident : $serializer:ty),* $(,)? }) => {
+		impl WorldSerializer for $type {
+			fn serialize(world: &mut World) -> Json {
+				serde_json::json!({
+				$(
+					stringify!($item): <$serializer as WorldSerializer>::serialize(world),
+				)*
+				})
+			}
+			fn deserialize(world: &mut World, mut json: Json) {
+				$(
+					<$serializer as WorldSerializer>::deserialize(world, json[stringify!($item)].take());
+				)*
+			}
+		}
+	};
+}
+
 macro_rules! serialize_world {
 	($world:ident, Res<$type:ty>) => {
 		if let Some(resource) = $world.get_resource::<$type>() {
-			resource.serialize()
+			<$type as Serializer>::serialize(resource)
 		}
 		else {
 			// resource not in world, could be a hard error
 			// instead insert null
-			serde_json::Value::Null
+			Json::Null
 		}
 	};
-	($world:ident, Single<$D:ty>) => {
-		crate::serialization::_serialize_single::<$D, ()>($world)
-	};
-	($world:ident, Single<$D:ty, $F:ty>) => {
-		crate::serialization::_serialize_single::<$D, $F>($world)
+	//($world:ident, Single<$type:tt>) => {
+	//	serialize_world($world, Single<$type, ()>)
+	//};
+	($world:ident, Single<($($component:tt),*), $filter:tt>) => {{
+		let mut query = $world.query_filtered::<($(& $component),*), $filter>();
+		match query.single($world) {
+			Ok(components) => {
+				<($($component),*) as Serializer>::serialize(&components)
+			},
+			Err(err) => match err {
+				bevy::ecs::query::QuerySingleError::NoEntities(_) => {
+					// entity not in world, could be a hard error
+					// instead insert null
+					Json::Null
+				}
+				bevy::ecs::query::QuerySingleError::MultipleEntities(_) => panic!("Multiple entities found!"), // TODO: return error and stop?
+			},
+		}}
 	};
 }
 macro_rules! deserialize_world {
 	($world:ident, $value:expr, Res<$type:ty>) => {
 		if let Some(mut resource) = $world.get_resource_mut::<$type>() {
-			resource.deserialize($value);
+			<$type as Serializer>::deserialize(resource.into_inner(), $value);
 		}
 		else {
 			// resource not in world, don't deserialize
 			// could also insert automatically, but not my desired behavoir
 		}
 	};
-	($world:ident, $value:expr, Single<$type:ty>) => {
-		crate::serialization::_deserialize_single::<$D, ()>($world, $value)
+	//($world:ident, $value:expr, Single<$type:tt>) => {
+	//	//deserialize_world($world, $value, Single<$type, ()>)
+	//};
+	($world:ident, $value:expr, Single<$type:tt, $filter:tt>) => {
+		//crate::serialization::_deserialize_single::<$type, $filter>($world, $value)
 	};
-	($world:ident, $value:expr, Single<$D:ty, $F:ty>) => {
-		crate::serialization::_deserialize_single::<$D, $F>($world, $value)
-	};
-}
-
-pub fn _serialize_single<D, F>(world: &mut World) -> serde_json::Value
-//where D: QueryData, F: QueryFilter
-where D: Component + Serializer, F: QueryFilter // TODO: support multiple components
-{
-	let mut query = world.query_filtered::<(&D), F>();
-	match query.single(world) {
-		Ok(components) => components.serialize(),
-		Err(err) => match err {
-			QuerySingleError::NoEntities(_) => {
-				// entity not in world, could be a hard error
-				// instead insert null
-				serde_json::Value::Null
-			}
-			QuerySingleError::MultipleEntities(_) => panic!("Multiple entities found!"), // TODO: return error and stop?
-		},
-	}
-}
-pub fn _deserialize_single<D, F>(world: &mut World, json: serde_json::Value)
-//where D: QueryData, F: QueryFilter
-where D: Component<Mutability = bevy::ecs::component::Mutable> + Serializer, F: QueryFilter // TODO: support multiple components
-{
-	let mut query = world.query_filtered::<(Mut<D>), F>();
-	match query.single_mut(world) {
-		Ok(mut components) => components.deserialize(json),
-		Err(err) => match err {
-			QuerySingleError::NoEntities(_) => {
-				// entity not in world, don't deserialize
-				warn!("Failed to deserialize single {}", std::any::type_name::<D>())
-			}
-			QuerySingleError::MultipleEntities(_) => panic!("Multiple entities found!"), // TODO: return error and stop?
-		},
-	}
 }
 
 pub(crate) use serializer;

@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use serde_json;
 use crate::serialization::*;
+use crate::flycam;
+use crate::debug_camera;
 
 const SETTINGS_FILE: &'static str = "settings.json";
 // TODO: use ron instead? advantages: enums, comments, trailing comma
@@ -19,7 +21,7 @@ impl Default for RenderSettings {
 		}
 	}
 }
-serializer!(RenderSettings, backends, disable_validation_in_debug);
+serializer!(RenderSettings{ backends, disable_validation_in_debug });
 serializer_world!(RenderSettings, Res<RenderSettings>);
 
 struct SettingsFile();
@@ -28,8 +30,46 @@ serializer_world!(SettingsFile{
 	window: crate::app_control::WindowSettings,
 	render: RenderSettings,
 	debug_cam: crate::debug_camera::DebugCameraState,
-	main_cam: crate::flycam::Flycam,
+	main_cam: (flycam::Flycam, Transform),
 });
+//serializer_world!((Flycam, Transform), Single<(Flycam, Transform), (With<debug_camera::MainCamera>)>);
+
+impl WorldSerializer for (flycam::Flycam, Transform) {
+	fn serialize(world: &mut World) -> serde_json::Value {
+		
+		let mut query = world.query_filtered::<(&flycam::Flycam, &Transform), (With<debug_camera::MainCamera>)>();
+		match query.single(world) {
+			Ok(components) => {
+				<(flycam::Flycam, Transform) as Serializer>::serialize(components)
+			},
+			Err(err) => match err {
+				bevy::ecs::query::QuerySingleError::NoEntities(_) => {
+					// entity not in world, could be a hard error
+					// instead insert null
+					serde_json::Value::Null
+				}
+				bevy::ecs::query::QuerySingleError::MultipleEntities(_) => panic!("Multiple entities found!"), // TODO: return error and stop?
+			},
+		}
+	}
+	fn deserialize(world: &mut World, mut json: serde_json::Value) {
+		//crate::serialization::deserialize_world!(world, json, $($query)*);
+		
+		let mut query = world.query_filtered::<(&mut flycam::Flycam, &mut Transform), (With<debug_camera::MainCamera>)>();
+		match query.single_mut(world) {
+			Ok(mut components) => {
+				<(flycam::Flycam, Transform) as Serializer>::deserialize(components, json);
+			},
+			Err(err) => match err {
+				bevy::ecs::query::QuerySingleError::NoEntities(_) => {
+					// entity not in world, could be a hard error
+				}
+				bevy::ecs::query::QuerySingleError::MultipleEntities(_) => panic!("Multiple entities found!"), // TODO: return error and stop?
+			},
+		}
+	}
+}
+
 
 pub fn save(world: &mut World) {
 	let json = SettingsFile::serialize(world);

@@ -4,6 +4,7 @@ use bevy::{
 	input::mouse::{ MouseMotion, MouseWheel, MouseScrollUnit },
 	window::{ CursorGrabMode, CursorIcon, CursorOptions, SystemCursorIcon },
 };
+use bevy_egui::render::systems::EguiTransform;
 use core::f32;
 use std::fmt;
 use crate::app_control::WindowSettings;
@@ -22,8 +23,8 @@ impl Plugin for FlycamPlugin {
 
 const MOUSELOOK_BTN : MouseButton = MouseButton::Middle;
 
-#[derive(Component, Reflect)]
-#[require(Transform, Camera3d, Camera)]
+#[derive(Component, Reflect, Clone)]
+#[require(Transform, Camera3d, Camera, Projection)]
 #[reflect(Component)]
 pub struct Flycam {
 	pub move_planar : bool,
@@ -42,19 +43,19 @@ pub struct Flycam {
 	pub speedup_factor : f32,
 	pub fast_multiplier : f32,
 }
-impl Flycam {
-	pub fn new(transf: Transform) -> (Transform, Camera3d, Projection, Flycam) {
+#[derive(Bundle)]
+pub struct FlycamBundle {
+	pub flycam: Flycam,
+	pub transf: Transform,
+	pub proj: Projection,
+	pub cam3d: Camera3d,
+	pub cam: Camera,
+}
+impl FlycamBundle {
+	pub fn new(transf: Transform) -> Self {
 		let vfov = 70.0_f32.to_radians();
-		(
-			transf,
-			Camera3d::default(),
-			Projection::Perspective(PerspectiveProjection {
-				fov: vfov,
-				near: 0.1,
-				far: 10000.0,
-				..default()
-			}),
-			Flycam {
+		Self {
+			flycam: Flycam {
 				move_planar: true,
 				vfov_multiplied_sensitivity: true,
 				// if vfov_multiplied_sensitivity == false:
@@ -73,11 +74,62 @@ impl Flycam {
 				max_speed: 1000000.0,
 				speedup_factor: 2.0,
 				fast_multiplier: 4.0,
-			}
-		)
+			},
+			transf,
+			proj: Projection::Perspective(PerspectiveProjection {
+				fov: vfov,
+				near: 0.1,
+				far: 10000.0,
+				..default()
+			}),
+			cam3d: Camera3d::default(),
+			cam: Camera::default(),
+		}
 	}
 }
-serializer!(Flycam, move_planar, mouse_sens, default_vfov, base_speed, speedup_factor);
+//serializer!(Flycam{ move_planar, mouse_sens, default_vfov, base_speed, speedup_factor });
+// Desired syntax for multi-component serializer
+//serializer!(
+//	Flycam{ move_planar, mouse_sens, default_vfov, base_speed, speedup_factor },
+//	Transform{ position, rotation } // explicit
+//	Transform // rely on Serializer for Transform ?
+//);
+
+impl Serializer for (Flycam, Transform) {
+	type SerializeFrom<'a> = (&'a Flycam, &'a Transform);
+	type DeserializeInto<'a> = (Mut<'a, Flycam>, Mut<'a, Transform>);
+	
+	fn serialize(from: Self::SerializeFrom<'_>) -> serde_json::Value {
+		serde_json::json!({
+			"position": from.1.translation,
+			"rotation": from.1.rotation,
+			"move_planar": from.0.move_planar,
+			"move_planar": from.0.move_planar,
+			"mouse_sens": from.0.mouse_sens,
+			"default_vfov": from.0.default_vfov,
+			"base_speed": from.0.base_speed,
+			"speedup_factor": from.0.speedup_factor,
+		})
+	}
+	fn deserialize(into: Self::DeserializeInto<'_>, json: serde_json::Value) {
+		$(
+			// Overwrite field if value exists in json
+			if let Some(value) = json.get_mut(stringify!($field)).take() {
+				into.$field.deserialize(value.take());
+			}
+		)*
+		
+		json[]
+		: from.1.translation = json["postion"],
+		"rotation": from.1.rotation,
+		"move_planar": from.0.move_planar,
+		"move_planar": from.0.move_planar,
+		"mouse_sens": from.0.mouse_sens,
+		"default_vfov": from.0.default_vfov,
+		"base_speed": from.0.base_speed,
+		"speedup_factor": from.0.speedup_factor,
+	}
+}
 
 fn wrap(x: f32, y: f32) -> f32 {
 	((x % y) + y) % y

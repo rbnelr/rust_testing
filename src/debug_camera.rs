@@ -25,7 +25,7 @@ pub struct DebugCamera;
 pub struct DebugCameraState {
 	viewing_debug_cam : bool,
 }
-serializer!(DebugCameraState, viewing_debug_cam);
+serializer!(DebugCameraState{ viewing_debug_cam });
 serializer_world!(DebugCameraState, Res<DebugCameraState>);
 
 fn update(
