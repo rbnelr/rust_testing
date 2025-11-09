@@ -1,32 +1,49 @@
 {
-	"window": {
+	"FlycamSer": [
+		{
+			"_marker": null,
+			"name": "MainCamera",
+			"transform": {
+				"translation": [
+					-2.0,
+					2.5,
+					5.0
+				],
+				"rotation": [
+					-0.21171875,
+					-0.18465967,
+					-0.040773306,
+					0.9588605
+				],
+				"scale": [
+					1.0,
+					1.0,
+					1.0
+				]
+			},
+			"flycam": {
+				"move_planar": true,
+				"vfov_multiplied_sensitivity": true,
+				"mouse_sens": 0.002,
+				"default_vfov": 1.2217305,
+				"vfov_target": 1.2217305,
+				"vfov_smooth": 25.0,
+				"zoom_speed": 1.5,
+				"speed": 4.0,
+				"base_speed": 4.0,
+				"max_speed": 1000000.0,
+				"speedup_factor": 2.0,
+				"fast_multiplier": 4.0
+			}
+		}
+	],
+	"WindowSettings": {
 		"fullscreen": false,
 		"fullscreen_borderless": true,
 		"vsync": true
 	},
-	"render": {
+	"RenderSettings": {
 		"backends": "vk, dx12, gl",
 		"disable_validation_in_debug": true
-	},
-	"debug_cam": {
-		"viewing_debug_cam": false
-	},
-	"main_cam": {
-		"postion": [
-			-2.0,
-			2.5,
-			5.0
-		],
-		"rotation": [
-			-0.21171875298023224,
-			-0.1846596747636795,
-			-0.04077330604195595,
-			0.9588605165481567
-		],
-		"move_planar": true,
-		"mouse_sens": 0.0020000000949949026,
-		"default_vfov": 1.2217304706573486,
-		"base_speed": 4.0,
-		"speedup_factor": 2.0
 	}
 }

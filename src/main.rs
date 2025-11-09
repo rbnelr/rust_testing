@@ -1,7 +1,6 @@
 #![allow(unused)]
 
 mod phases;
-mod serialization;
 mod settings_file;
 mod egui_histogram;
 mod app_control;
@@ -26,7 +25,6 @@ use std::f32::consts::*;
 use bevy_egui::*;
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
-use serialization::*;
 use debug_camera::{DebugCamera, MainCamera};
 use flycam::FlycamBundle;
 

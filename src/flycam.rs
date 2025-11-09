@@ -9,8 +9,7 @@ use core::f32;
 use std::fmt;
 use crate::app_control::WindowSettings;
 use crate::phases::Phase;
-use crate::serialization::*;
-
+use serde::*;
 pub struct FlycamPlugin;
 
 impl Plugin for FlycamPlugin {
@@ -23,7 +22,7 @@ impl Plugin for FlycamPlugin {
 
 const MOUSELOOK_BTN : MouseButton = MouseButton::Middle;
 
-#[derive(Component, Reflect, Clone)]
+#[derive(Component, Reflect, Clone, Serialize, Deserialize)]
 #[require(Transform, Camera3d, Camera, Projection)]
 #[reflect(Component)]
 pub struct Flycam {
@@ -87,53 +86,7 @@ impl FlycamBundle {
 		}
 	}
 }
-//serializer!(Flycam{ move_planar, mouse_sens, default_vfov, base_speed, speedup_factor });
-// Desired syntax for multi-component serializer
-//serializer!(
-//	Flycam{ move_planar, mouse_sens, default_vfov, base_speed, speedup_factor },
-//	Transform{ position, rotation } // explicit
-//	Transform // rely on Serializer for Transform ?
-//);
 
-impl Serializer for (Flycam, Transform) {
-	type SerializeFrom<'a> = (&'a Flycam, &'a Transform);
-	type DeserializeInto<'a> = (Mut<'a, Flycam>, Mut<'a, Transform>);
-	
-	fn serialize(from: Self::SerializeFrom<'_>) -> serde_json::Value {
-		serde_json::json!({
-			"position": from.1.translation,
-			"rotation": from.1.rotation,
-			"move_planar": from.0.move_planar,
-			"move_planar": from.0.move_planar,
-			"mouse_sens": from.0.mouse_sens,
-			"default_vfov": from.0.default_vfov,
-			"base_speed": from.0.base_speed,
-			"speedup_factor": from.0.speedup_factor,
-		})
-	}
-	fn deserialize(into: Self::DeserializeInto<'_>, json: serde_json::Value) {
-		$(
-			// Overwrite field if value exists in json
-			if let Some(value) = json.get_mut(stringify!($field)).take() {
-				into.$field.deserialize(value.take());
-			}
-		)*
-		
-		json[]
-		: from.1.translation = json["postion"],
-		"rotation": from.1.rotation,
-		"move_planar": from.0.move_planar,
-		"move_planar": from.0.move_planar,
-		"mouse_sens": from.0.mouse_sens,
-		"default_vfov": from.0.default_vfov,
-		"base_speed": from.0.base_speed,
-		"speedup_factor": from.0.speedup_factor,
-	}
-}
-
-fn wrap(x: f32, y: f32) -> f32 {
-	((x % y) + y) % y
-}
 fn get_mouse_scroll_delta(mouse_wheel: &mut MessageReader<MouseWheel>) -> f32 {
 	let mut total_lines : f32 = 0.0;
 	for event in mouse_wheel.read() {

@@ -4,8 +4,8 @@ use bevy::window::{CursorIcon, CursorOptions, PrimaryWindow, WindowMode, Present
 use bevy_egui::*;
 use egui::{Ui, RichText, Color32};
 use crate::phases::Phase;
-use crate::serialization::*;
 use crate::settings_file;
+use serde::*;
 
 pub struct AppControlPlugin;
 impl Plugin for AppControlPlugin {
@@ -19,7 +19,7 @@ impl Plugin for AppControlPlugin {
 	}
 }
 
-#[derive(Resource, Reflect, Copy, Clone, PartialEq)]
+#[derive(Resource, Reflect, Copy, Clone, PartialEq, Serialize, Deserialize)]
 #[reflect(Resource)]
 pub struct WindowSettings {
 	// Ideally I'd be able to restore windowing state after restarting
@@ -41,8 +41,6 @@ impl Default for WindowSettings {
 		}
 	}
 }
-serializer!(WindowSettings{ fullscreen, fullscreen_borderless, vsync });
-serializer_world!(WindowSettings, Res<WindowSettings>);
 
 pub const APP_NAME : &str = "Bevy Test Project";
 
