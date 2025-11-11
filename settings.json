@@ -1,19 +1,30 @@
 {
+	"WindowSettings": {
+		"fullscreen": false,
+		"fullscreen_borderless": true,
+		"vsync": true
+	},
+	"RenderSettings": {
+		"backends": "vk, dx12, gl",
+		"disable_validation_in_debug": true
+	},
+	"DebugCameraState": {
+		"viewing_debug_cam": false
+	},
 	"FlycamSer": [
 		{
 			"_marker": null,
-			"name": "MainCamera",
 			"transform": {
 				"translation": [
-					-2.0,
+					-0.8728409,
 					2.5,
-					5.0
+					6.469467
 				],
 				"rotation": [
-					-0.21171875,
-					-0.18465967,
-					-0.040773306,
-					0.9588605
+					-0.16643894,
+					-0.009304795,
+					-0.001570659,
+					0.98600656
 				],
 				"scale": [
 					1.0,
@@ -36,14 +47,5 @@
 				"fast_multiplier": 4.0
 			}
 		}
-	],
-	"WindowSettings": {
-		"fullscreen": false,
-		"fullscreen_borderless": true,
-		"vsync": true
-	},
-	"RenderSettings": {
-		"backends": "vk, dx12, gl",
-		"disable_validation_in_debug": true
-	}
+	]
 }

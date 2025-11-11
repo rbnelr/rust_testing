@@ -180,7 +180,7 @@ fn startup(
 	// ground plane
 	commands.spawn((
 		Mesh3d(meshes.add(Plane3d::default().mesh().size(100.0, 100.0))),
-		MeshMaterial3d(materials.add(Color::WHITE)),
+		MeshMaterial3d(materials.add(Color::srgb(0.4, 0.55, 0.6))),
 		Name::new("Ground Plane")
 	));
 
