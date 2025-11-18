@@ -1,6 +1,8 @@
 #![allow(unused)]
 
+mod util;
 mod phases;
+mod serialization;
 mod settings_file;
 mod egui_histogram;
 mod app_control;

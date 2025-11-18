@@ -41,6 +41,9 @@ pub struct Flycam {
 	pub max_speed : f32,
 	pub speedup_factor : f32,
 	pub fast_multiplier : f32,
+	
+	#[serde(skip)]
+	pub test : f32, // TODO: how does this work if serde never serializes in place?
 }
 #[derive(Bundle)]
 pub struct FlycamBundle {
@@ -73,6 +76,8 @@ impl FlycamBundle {
 				max_speed: 1000000.0,
 				speedup_factor: 2.0,
 				fast_multiplier: 4.0,
+				
+				test: 99.0,
 			},
 			transf,
 			proj: Projection::Perspective(PerspectiveProjection {

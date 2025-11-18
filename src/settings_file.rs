@@ -1,8 +1,9 @@
 use bevy::prelude::*;
 use serde::*;
-use bevy_serde_lens::*;
+//use bevy_serde_lens::*;
 use crate::flycam;
 use crate::debug_camera;
+use crate::serialization::*;
 
 const SETTINGS_FILE: &'static str = "settings.json";
 // TODO: use ron instead? advantages: enums, comments, trailing comma
@@ -22,28 +23,46 @@ impl Default for RenderSettings {
 	}
 }
 
-#[derive(Bundle, BevyObject)]
-#[bevy_object(query)]
-pub struct FlycamSer {
-	pub _marker: debug_camera::MainCamera, // huh? How do we specify the filter without this dodgy thing?
-	pub transform: Transform,
-	pub flycam: flycam::Flycam,
-}
+//#[derive(Bundle, BevyObject)]
+//#[bevy_object(query)]
+//pub struct FlycamSer {
+//	pub _marker: debug_camera::MainCamera, // huh? How do we specify the filter without this dodgy thing?
+//	pub transform: Transform,
+//	pub flycam: flycam::Flycam,
+//}
+//
+//type SettingsFile = bevy_serde_lens::batch!(
+//	SerializeResource<crate::app_control::WindowSettings>,
+//	SerializeResource<RenderSettings>,
+//	SerializeResource<crate::debug_camera::DebugCameraState>,
+//	FlycamSer,
+//);
 
-type SettingsFile = bevy_serde_lens::batch!(
-	SerializeResource<crate::app_control::WindowSettings>,
-	SerializeResource<RenderSettings>,
-	SerializeResource<crate::debug_camera::DebugCameraState>,
-	FlycamSer,
+use flycam::*;
+world_serializer_entity!(FlycamBundle,
+	transform : Transform, flycam : flycam::Flycam,
 );
 
-fn serialize_to_json_pretty_tabs<T>(value: &T) -> Result<String>
-where T: Serialize {
+struct Nested;
+world_serializer!(Nested,
+	debug_cam: Res<crate::debug_camera::DebugCameraState>,
+	main_cam: Single<FlycamSer, With<crate::debug_camera::MainCamera>>,
+);
+
+struct SettingsFile;
+world_serializer!(SettingsFile,
+	window: Res<crate::app_control::WindowSettings>,
+	render: Res<RenderSettings>,
+	nested: Nested,
+);
+
+// TODO: can we write this helper function to take in WorldSerializer directly?
+fn serialize_to_json_pretty_tabs(json: &serde_json::Value) -> Result<String> {
 	let mut vec = Vec::with_capacity(1024);
 	let mut ser = serde_json::Serializer::with_formatter(&mut vec,
 		serde_json::ser::PrettyFormatter::with_indent(b"\t"));
 	
-	if let Err(e) = serde::Serialize::serialize(&value, &mut ser) {
+	if let Err(e) = serde::Serialize::serialize(&json, &mut ser) {
 		warn!("{e:?}");
 		return Err(e.into());
 	}
@@ -54,9 +73,16 @@ where T: Serialize {
 }
 
 pub fn save(world: &mut World) {
-	let value = &world.serialize_lens::<SettingsFile>();
+	//let value = &world.serialize_lens::<SettingsFile>();
+	let mut query = world.query_filtered::<(&Transform, &flycam::Flycam), With<crate::debug_camera::MainCamera>>();
+	let cam = query.single(world).unwrap();
 	
-	if let Ok(json_str) = serialize_to_json_pretty_tabs(&value) {
+	let mut json = <crate::flycam::FlycamBundle as EntitySerializer>::serialize(cam, serde_json::value::Serializer).unwrap();
+	
+	// Important to version save files when releasing applications
+	json.as_object_mut().unwrap().shift_insert(0, "version".into(), "0.1".into());
+	
+	if let Ok(json_str) = serialize_to_json_pretty_tabs(&json) {
 		if std::fs::write(SETTINGS_FILE, json_str).is_ok() {
 			info!("Saved!");
 			return;
@@ -90,16 +116,22 @@ pub fn early_load_settings() -> Option<LoadResult> {
 	warn!("Failed to load {SETTINGS_FILE}!");
 	None
 }
+use crate::util::*;
 pub fn load_settings(world: &mut World, res: Option<LoadResult>) {
 	world.insert_resource(RenderSettings::default()); // Never inserted anywhere else
 	
 	if let Some(res) = res {
-		world.despawn_bound_objects::<SettingsFile>();
-		world.deserialize_scope(|| {
-			let _ = serde_json::from_value::<InWorld<SettingsFile>>(res.loaded_json);
-			// TODO: FIX: Because how serde lens works, camera gets respawned from scratch, so either I serialize everything,
-			// despite it not making sense or I need to work around the fact that a bunch of components will be missing
-		});
+		//world.despawn_bound_objects::<SettingsFile>();
+		//world.deserialize_scope(|| {
+		//	let _ = serde_json::from_value::<InWorld<SettingsFile>>(res.loaded_json);
+		//	// TODO: FIX: Because how serde lens works, camera gets respawned from scratch, so either I serialize everything,
+		//	// despite it not making sense or I need to work around the fact that a bunch of components will be missing
+		//});
+		
+		let mut query = world.query_filtered::<(&mut Transform, &mut flycam::Flycam), With<crate::debug_camera::MainCamera>>();
+		let cam = query.single_mut(world).unwrap();
+		
+		<crate::flycam::FlycamBundle as EntitySerializer>::deserialize(cam, res.loaded_json).unwrap();
 		
 		info!("Fully Loaded {SETTINGS_FILE}!");
 	}
