@@ -61,15 +61,18 @@ macro_rules! world_serializer_entity {
 			}
 			fn deserialize<'a, 'de, D> (components: Self::DeComponentTuple<'a>, deserializer: D) -> Result<(), D::Error>
 			where D: serde::Deserializer<'de> {
-				// TODO: can we access the members in the serialized thing and actually deserialize in place?
-				// maybe this requires the vistor?
-				
 				// The visitor pattern for deserialize_struct is a bit complex, fall back to serde's derive for now
 				#[derive(serde::Deserialize)]
 				struct Helper {
 					$($component_name: $component_type),*
 				};
-				let tmp = Helper::deserialize(deserializer)?;
+				let tmp = match Helper::deserialize(deserializer) {
+					Ok(val) => val,
+					Err(e) => {
+						error!("Error deserializing entity (skipping entity): {}", e); // TODO: will not tell us the component that has a missing field
+						return Ok(());
+					}
+				};
 				
 				// Destructure tuple to make members accesible by macro as macros are to dumb to count indices
 				#[allow(non_snake_case)]
@@ -81,6 +84,61 @@ macro_rules! world_serializer_entity {
 				)*
 				
 				Ok(())
+				
+				//use serde::de::{self, MapAccess, Visitor};
+				//use std::fmt;
+				//
+				//const FIELDS : &[&str] = &["transform", "flycam"];
+				//struct ComponentsVisitor<'a> {
+				//	$($component_name: Mut<'a, $component_type>),*
+				//};
+				//
+				//impl<'a, 'de> Visitor<'de> for ComponentsVisitor<'a> {
+				//	type Value = ();
+				//	
+				//	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+				//		formatter.write_str("a map of components")
+				//	}
+				//
+				//	fn visit_map<A>(mut self, mut map: A) -> Result<Self::Value, A::Error>
+				//	where A: MapAccess<'de>
+				//	{
+				//		// Track which fields we've seen
+				//		$(let mut $component_name = false;)*
+				//		
+				//		while let Some(key) = map.next_key::<String>()? {
+				//			match key.as_str() {
+				//			$(
+				//				stringify!($component_name) => {
+				//					if $component_name {
+				//						return Err(de::Error::duplicate_field(stringify!($component_name)));
+				//					}
+				//					// Deserialize to Mut<> component reference in tuple, which will trigger change detection
+				//					*self.$component_name = map.next_value()?;
+				//					// TODO: any mismatch in component and json will cause error and stop serialization (but keep partial changes!)
+				//					
+				//					//self.$component_name.deserialize_in_place();
+				//					
+				//					$component_name = true;
+				//				}
+				//			)*
+				//				"transform" => { println!("transform"); },
+				//				"flycam" => { println!("flycam"); },
+				//				
+				//				//_ => Err(de::Error::unknown_field(value, FIELDS)),
+				//				_ => {},
+				//			}
+				//		}
+				//		Ok(())
+				//	}
+				//}
+				//
+				//let ($($component_name),*) = components;
+				//let visitor = ComponentsVisitor{ $($component_name),* };
+				//
+				//deserializer.deserialize_struct(stringify!($type), FIELDS, visitor)?;
+				//
+				//Ok(())
 			}
 		}
 	};

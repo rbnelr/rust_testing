@@ -77,7 +77,8 @@ pub fn save(world: &mut World) {
 	let mut query = world.query_filtered::<(&Transform, &flycam::Flycam), With<crate::debug_camera::MainCamera>>();
 	let cam = query.single(world).unwrap();
 	
-	let mut json = <crate::flycam::FlycamBundle as EntitySerializer>::serialize(cam, serde_json::value::Serializer).unwrap();
+	let cam_json = <crate::flycam::FlycamBundle as EntitySerializer>::serialize(cam, serde_json::value::Serializer).unwrap();
+	let mut json = serde_json::json!({ "main_cam": cam_json });
 	
 	// Important to version save files when releasing applications
 	json.as_object_mut().unwrap().shift_insert(0, "version".into(), "0.1".into());
@@ -131,7 +132,7 @@ pub fn load_settings(world: &mut World, res: Option<LoadResult>) {
 		let mut query = world.query_filtered::<(&mut Transform, &mut flycam::Flycam), With<crate::debug_camera::MainCamera>>();
 		let cam = query.single_mut(world).unwrap();
 		
-		<crate::flycam::FlycamBundle as EntitySerializer>::deserialize(cam, res.loaded_json).unwrap();
+		<crate::flycam::FlycamBundle as EntitySerializer>::deserialize(cam, &res.loaded_json["main_cam"]).unwrap();
 		
 		info!("Fully Loaded {SETTINGS_FILE}!");
 	}
