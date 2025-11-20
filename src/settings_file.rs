@@ -56,6 +56,40 @@ world_serializer!(SettingsFile,
 	nested: Nested,
 );
 
+impl MyWorldSerializer for SettingsFile {
+	#[derive(Serialize)]
+	struct Serializeable {
+		
+	}
+
+	fn serialize<S> (world: &mut World, serializer: S) -> Result<S::Ok, S::Error>
+	where S: serde::Serializer {
+	
+		//<Res<crate::debug_camera::DebugCameraState> as MyWorldSerializer>::serialize(world, serializer)?;
+		//<Single<FlycamBundle, With<crate::debug_camera::MainCamera>> as MyWorldSerializer>::serialize(world, serializer)?;
+		
+		let mut query = world.query_filtered::<(&Transform, &flycam::Flycam), With<crate::debug_camera::MainCamera>>();
+		let cam = query.single(world).unwrap();
+		
+		let mut _struct = serializer.serialize_struct("SettingsFile", 2)?;
+		
+		{	
+			let render = <Res<RenderSettings> as MyWorldSerializer>::serialize(world)?;
+			_struct.serialize_field("render", render)?; // How do we take the result of a serde::Serialize and use it as a value for a field like this? (Normally we have to pass something that itself is serde::Serialize
+		}
+		{	
+			let main_cam = <crate::flycam::FlycamBundle as EntitySerializer>::serialize(cam, serializer).unwrap();
+			_struct.serialize_field("main_cam", main_cam)?;
+		}
+		
+		_struct.end()
+	}
+	fn deserialize<'de, D> (world: &mut World, deserializer: D) -> Result<(), D::Error>
+	where D: serde::Deserializer<'de> {
+		Ok(())
+	}
+}
+
 // TODO: can we write this helper function to take in WorldSerializer directly?
 fn serialize_to_json_pretty_tabs(json: &serde_json::Value) -> Result<String> {
 	let mut vec = Vec::with_capacity(1024);
@@ -78,7 +112,10 @@ pub fn save(world: &mut World) {
 	let cam = query.single(world).unwrap();
 	
 	let cam_json = <crate::flycam::FlycamBundle as EntitySerializer>::serialize(cam, serde_json::value::Serializer).unwrap();
-	let mut json = serde_json::json!({ "main_cam": cam_json });
+	let res_json = <Res<RenderSettings> as MyWorldSerializer>::serialize(world, serde_json::value::Serializer).unwrap();
+	
+	
+	let mut json = serde_json::json!({ "render": res_json, "main_cam": cam_json });
 	
 	// Important to version save files when releasing applications
 	json.as_object_mut().unwrap().shift_insert(0, "version".into(), "0.1".into());
@@ -132,7 +169,11 @@ pub fn load_settings(world: &mut World, res: Option<LoadResult>) {
 		let mut query = world.query_filtered::<(&mut Transform, &mut flycam::Flycam), With<crate::debug_camera::MainCamera>>();
 		let cam = query.single_mut(world).unwrap();
 		
-		<crate::flycam::FlycamBundle as EntitySerializer>::deserialize(cam, &res.loaded_json["main_cam"]).unwrap();
+		let res = <crate::flycam::FlycamBundle as EntitySerializer>::deserialize(cam, &res.loaded_json["main_cam"]);
+		if let Err(e) = res {
+			error!("Error deserializing entity {} (skipping): {}", "main_cam", e); // TODO: will not tell us the component that has a missing field
+			// continiue loading
+		}
 		
 		info!("Fully Loaded {SETTINGS_FILE}!");
 	}
