@@ -1,6 +1,7 @@
-use bevy::{asset::uuid::serde::compact::deserialize, prelude::*};
+use bevy::{ecs::query::{QueryData, QueryFilter, ROQueryItem, QueryItem}, prelude::*};
 use bevy_egui::egui::TextBuffer;
-use serde::{Serialize, de::DeserializeOwned, ser::Error};
+use serde::Deserialize;
+use std::marker::PhantomData;
 
 // NOTE:
 /*
@@ -117,184 +118,152 @@ it would either have to be heavily worked around, or we have to always serialize
 overall I feel like giving the serialization code a query like Single<> would work better
 */
 
-pub trait MyWorldSerializer {
-	type Serializeable<'a>: serde::Serialize;
-	
-	fn serialize (world: &mut World) -> Result<Self::Serializeable<'_>, String>; // Error type?
-	
-	fn deserialize<'de, D> (world: &mut World, deserializer: D) -> Result<(), D::Error>
-	where D: serde::Deserializer<'de>;
+pub type Error = Box<dyn std::error::Error>;
+type Json = serde_json::Value;
+pub type JsonResult = Result<Json, Error>;
+
+// TODO: auto serialization of entity references using hashmap based serializer state (lazily assign incrementing IDs)
+// could also use this to implement "additive/partial" serialization, where we can choose to serialize ex. all vehicle components in one list,
+// then serialize all bus components of vehicles that are busses
+// advantage:
+//  -homogenous data in save file instead of heterogenous list (possibly faster?)
+//  if vehicle is the superset of all 'additive' components,
+// deserializer can first despawn all vehicles, then spawn empty entities for all, then insert vehicle components from vehicles list, then insert bug components for all busses using id ...
+// alternative is having heterogenous serializer where code needs to somehow insert only those components that are in the json
+
+pub trait WorldSerializer {
+	fn serialize (world: &mut World) -> Result<serde_json::Value, Error>;
+	fn deserialize (world: &mut World, json: &serde_json::Value) -> Result<(), Error>;
 }
-pub trait EntitySerializer where Self: Sized {
-	type SerComponentTuple<'a> where Self: 'a;
-	type DeComponentTuple<'a> where Self: 'a;
+pub trait EntitySerializer {
+	type ComponentTuple;
+	type RefTuple<'a>: QueryData;
+	type MutTuple<'a>: QueryData;
 	
-	fn serialize<'a, S> (components: Self::SerComponentTuple<'a>, serializer: S) -> Result<S::Ok, S::Error>
-	where S: serde::Serializer;
-	fn deserialize<'a, 'de, D> (components: Self::DeComponentTuple<'a>, deserializer: D) -> Result<(), D::Error>
-	where D: serde::Deserializer<'de>;
+	fn serialize (components: ROQueryItem<'_, '_, Self::RefTuple<'_>>) -> serde_json::Value;
+	fn deserialize (components: QueryItem<'_, '_, Self::MutTuple<'_>>, json: &serde_json::Value) -> Result<(), Error>;
+	
+	// With existing entities, I have to use a query, which right now will return existing component references
+	// and for those passing in a MutTuple and having deserialize assign them makes more sense
+	// TODO: for entities which get newly spawned we could make a version like this
+	//fn deserialize (json: &serde_json::Value) -> Result<Self::ComponentTuple, Error>;
 }
 
-macro_rules! world_serializer {
-	($type:ty, $($field:ident: $world_serializer_type:ty),* $(,)?) => {
-//		impl MyWorldSerializer for $type {
-//			fn serialize<S> (world: &mut World, serializer: S) -> Result<S::Ok, S::Error>
-//			where S: serde::Serializer {
-//				//Ok(S::Ok())
-//				$(
-//				<$world_serializer_type as MyWorldSerializer>::serialize(world, serializer)?
-//				)*
-//				Ok()
-//			}
-//			fn deserialize<'de, D> (world: &mut World, deserializer: D) -> Result<(), D::Error>
-//			where D: serde::Deserializer<'de> {
-//				Ok(())
-//			}
-//		}
-	};
-}
+pub struct WorldRes<T: Resource>(PhantomData<T>);
 
-impl<T> MyWorldSerializer for Res<'_, T>
-where T: Resource + Serialize + DeserializeOwned {
-	type Serializeable<'a> = &'a T;
-	
-	fn serialize (world: &mut World) -> Result<Self::Serializeable<'_>, String> {
+// TODO: add different modes when is missing from world or json?
+impl<T> WorldSerializer for WorldRes<T>
+where T: Resource + serde::Serialize + serde::de::DeserializeOwned {
+	// missing resource from world: log error, insert null in json, but continue
+	// TODO: make mode where missing is expected and thus does not log error?
+	fn serialize (world: &mut World) -> crate::serialization::JsonResult {
 		if let Some(res) = world.get_resource::<T>() {
-			Ok(&res)
+			Ok(serde_json::to_value(res)?)
 		}
 		else {
-			error!("Error serializing Resource {}: resource missing in world", std::any::type_name::<T>());
-			Err("missing resource in world".into())
+			Err(format!("Error serializing Resource {}: missing in world", std::any::type_name::<T>()).into())
 		}
 	}
-	fn deserialize<'de, D> (world: &mut World, deserializer: D) -> Result<(), D::Error>
-	where D: serde::Deserializer<'de> {
-		match T::deserialize(deserializer) {
+	// insert or replace resource in world
+	fn deserialize (world: &mut World, json: &serde_json::Value) -> Result<(), Box<dyn std::error::Error>> {
+		match <T>::deserialize(json) {
 			Ok(res) => {
-				world.insert_resource(res); // replace or lazily insert TODO: ?
+				world.insert_resource(res);
+				Ok(())
+			},
+			Err(e) => Err(format!("Error deserializing Resource {}: {}", std::any::type_name::<T>(), e).into()),
+		}
+	}
+}
+
+pub struct WorldSingleEntity<T: EntitySerializer, F=()>(PhantomData<T>, PhantomData<F>);
+
+impl<T, F> WorldSerializer for WorldSingleEntity<T, F>
+where T: EntitySerializer, F: QueryFilter {
+	fn serialize (world: &mut World) -> Result<serde_json::Value, Error> {
+		let mut query = world.query_filtered::<T::RefTuple<'_>, F>();
+		match query.single(world) {
+			Ok(components) => {
+				Ok(T::serialize(components))
+			},
+			Err(e) => {
+				Err(format!("Error serializing Single Entity <{},{}>: {}", std::any::type_name::<T>(), std::any::type_name::<F>(), e).into())
+			},
+		}
+	}
+	fn deserialize (world: &mut World, json: &serde_json::Value) -> Result<(), Error> {
+		let mut query = world.query_filtered::<T::MutTuple<'_>, F>();
+		match query.single_mut(world) {
+			Ok(components) => {
+				T::deserialize(components, json)?;
 				Ok(())
 			},
 			Err(e) => {
-				error!("Error deserializing Resource {}: {}", std::any::type_name::<T>(), e);
-				Err(e)
-			}
+				Err(format!("Error deserializing Single Entity <{},{}>: {}", std::any::type_name::<T>(), std::any::type_name::<F>(), e).into())
+			},
 		}
 	}
 }
 
-macro_rules! world_serializer_entity {
+macro_rules! serializer_entity {
 	// give custom names for json key of components
 	($type:ty, $($component_name:ident : $component_type:ty),* $(,)?) => {
 		impl EntitySerializer for $type {
-			type SerComponentTuple<'a> = ($(&'a $component_type),*) where Self: 'a;
-			type DeComponentTuple<'a> = ($(Mut<'a, $component_type>),*) where Self: 'a;
+			type ComponentTuple = ($($component_type),*);
+			type RefTuple<'a> = ($(&'a $component_type),*);
+			type MutTuple<'a> = ($(&'a mut $component_type),*);
 			
-			fn serialize<'a, S> (components: Self::SerComponentTuple<'a>, serializer: S) -> Result<S::Ok, S::Error>
-			where S: serde::Serializer {
-				//#[derive(serde::Serialize)]
-				//struct Helper<'a> {
-				//	$($component_name: &'a $component_type),*
-				//};
-				//let ($($field),*) = components;
-				//Helper{ $($field),* }.serialize(serializer)
-				
-				use serde::ser::SerializeStruct;
-				
-				// Destructure tuple to make members accesible by macro as macros are to dumb to count indices
-				#[allow(non_snake_case)]
-				let ($($component_name),*) = components;
-				
-				let mut _struct = serializer.serialize_struct(stringify!($type), crate::util::_ident_count!($($component_name),*))?;
+			#[allow(non_snake_case)] // we want type name as key, and need temp vars using key here, which is not snake case
+			fn serialize (components: bevy::ecs::query::ROQueryItem<'_, '_, Self::RefTuple<'_>>) -> serde_json::Value {
+				let ( $($component_name),* ) = components;
+				serde_json::json!({
 				$(
-				// Serialize from component reference in tuple
-				_struct.serialize_field(stringify!($component_name), $component_name)?;
+					stringify!($component_name): $component_name,
 				)*
-				_struct.end()
+				})
 			}
-			fn deserialize<'a, 'de, D> (components: Self::DeComponentTuple<'a>, deserializer: D) -> Result<(), D::Error>
-			where D: serde::Deserializer<'de> {
-				// The visitor pattern for deserialize_struct is a bit complex, fall back to serde's derive for now
-				#[derive(serde::Deserialize)]
-				struct Helper {
-					$($component_name: $component_type),*
-				};
-				// deserializes components into new structs
-				let new_components = Helper::deserialize(deserializer)?;
-				
-				// Destructure tuple to make members accesible by macro as macros are to dumb to count indices
-				#[allow(non_snake_case)]
-				let ($(mut $component_name),*) = components;
-				
+			#[allow(non_snake_case)]
+			fn deserialize (
+				components: bevy::ecs::query::QueryItem<'_, '_, Self::MutTuple<'_>>,
+				json: &serde_json::Value
+			) -> Result<(), Error> {
+				let ( $(mut $component_name),* ) = components;
 				$(
-				// Replace components via Mut<> component reference in tuple, which will trigger change detection
-				*$component_name = new_components.$component_name;
+				*$component_name = match serde::Deserialize::deserialize(&json[stringify!($component_name)]) {
+					Ok(val) => val,
+					Err(e) => return Err(format!("Error deserializing Entity {}: {:?}", stringify!($component_name), e).into()),
+				};
 				)*
-				
 				Ok(())
-				
-				//use serde::de::{self, MapAccess, Visitor};
-				//use std::fmt;
-				//
-				//const FIELDS : &[&str] = &["transform", "flycam"];
-				//struct ComponentsVisitor<'a> {
-				//	$($component_name: Mut<'a, $component_type>),*
-				//};
-				//
-				//impl<'a, 'de> Visitor<'de> for ComponentsVisitor<'a> {
-				//	type Value = ();
-				//	
-				//	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-				//		formatter.write_str("a map of components")
-				//	}
-				//
-				//	fn visit_map<A>(mut self, mut map: A) -> Result<Self::Value, A::Error>
-				//	where A: MapAccess<'de>
-				//	{
-				//		// Track which fields we've seen
-				//		$(let mut $component_name = false;)*
-				//		
-				//		while let Some(key) = map.next_key::<String>()? {
-				//			match key.as_str() {
-				//			$(
-				//				stringify!($component_name) => {
-				//					if $component_name {
-				//						return Err(de::Error::duplicate_field(stringify!($component_name)));
-				//					}
-				//					// Deserialize to Mut<> component reference in tuple, which will trigger change detection
-				//					*self.$component_name = map.next_value()?;
-				//					// TODO: any mismatch in component and json will cause error and stop serialization (but keep partial changes!)
-				//					
-				//					//self.$component_name.deserialize_in_place();
-				//					
-				//					$component_name = true;
-				//				}
-				//			)*
-				//				"transform" => { println!("transform"); },
-				//				"flycam" => { println!("flycam"); },
-				//				
-				//				//_ => Err(de::Error::unknown_field(value, FIELDS)),
-				//				_ => {},
-				//			}
-				//		}
-				//		Ok(())
-				//	}
-				//}
-				//
-				//let ($($component_name),*) = components;
-				//let visitor = ComponentsVisitor{ $($component_name),* };
-				//
-				//deserializer.deserialize_struct(stringify!($type), FIELDS, visitor)?;
-				//
-				//Ok(())
 			}
 		}
 	};
 	// use type as json key of components
-	// NOTE: does not support type names like, do use flycam::Flycam first or use above pattern of macro
+	// NOTE: does not support type names like flycam::Flycam, in that case use above pattern
 	($type:ty, $($component_type:tt),* $(,)?) => {
-		world_serializer_entity!($type, $($component_type : $component_type),*);
+		serializer_entity!($type, $($component_type : $component_type),*);
 	}
 }
 
+macro_rules! world_serializer {
+	($type:ty, $($field:ident: $world_serializer_type:ty),* $(,)?) => {
+		impl WorldSerializer for $type {
+			fn serialize (world: &mut World) -> crate::serialization::JsonResult {
+				Ok(serde_json::json!({
+				$(
+					stringify!($field): <$world_serializer_type as WorldSerializer>::serialize(world)?,
+				)*
+				}))
+			}
+			fn deserialize (world: &mut World, json: &serde_json::Value) -> Result<(), Error> {
+				$(
+				<$world_serializer_type as WorldSerializer>::deserialize(world, &json[stringify!($field)])?;
+				)*
+				Ok(())
+			}
+		}
+	};
+}
+
 pub(crate) use world_serializer;
-pub(crate) use world_serializer_entity;
+pub(crate) use serializer_entity;

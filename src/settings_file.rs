@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use serde::*;
-//use bevy_serde_lens::*;
 use crate::flycam;
 use crate::debug_camera;
+use crate::serialization;
 use crate::serialization::*;
 
 const SETTINGS_FILE: &'static str = "settings.json";
@@ -23,83 +23,36 @@ impl Default for RenderSettings {
 	}
 }
 
-//#[derive(Bundle, BevyObject)]
-//#[bevy_object(query)]
-//pub struct FlycamSer {
-//	pub _marker: debug_camera::MainCamera, // huh? How do we specify the filter without this dodgy thing?
-//	pub transform: Transform,
-//	pub flycam: flycam::Flycam,
-//}
-//
-//type SettingsFile = bevy_serde_lens::batch!(
-//	SerializeResource<crate::app_control::WindowSettings>,
-//	SerializeResource<RenderSettings>,
-//	SerializeResource<crate::debug_camera::DebugCameraState>,
-//	FlycamSer,
-//);
-
 use flycam::*;
-world_serializer_entity!(FlycamBundle,
-	transform : Transform, flycam : flycam::Flycam,
+serializer_entity!(FlycamBundle,
+	Transform, Flycam,
 );
 
 struct Nested;
 world_serializer!(Nested,
-	debug_cam: Res<crate::debug_camera::DebugCameraState>,
-	main_cam: Single<FlycamSer, With<crate::debug_camera::MainCamera>>,
+	debug_cam: WorldRes<crate::debug_camera::DebugCameraState>,
+	main_cam: WorldSingleEntity<FlycamBundle, With<crate::debug_camera::MainCamera>>,
 );
 
 struct SettingsFile;
 world_serializer!(SettingsFile,
-	window: Res<crate::app_control::WindowSettings>,
-	render: Res<RenderSettings>,
+	window: WorldRes<crate::app_control::WindowSettings>,
+	render: WorldRes<RenderSettings>,
 	nested: Nested,
 );
 
-impl MyWorldSerializer for SettingsFile {
-	#[derive(Serialize)]
-	struct Serializeable {
-		
-	}
-
-	fn serialize<S> (world: &mut World, serializer: S) -> Result<S::Ok, S::Error>
-	where S: serde::Serializer {
-	
-		//<Res<crate::debug_camera::DebugCameraState> as MyWorldSerializer>::serialize(world, serializer)?;
-		//<Single<FlycamBundle, With<crate::debug_camera::MainCamera>> as MyWorldSerializer>::serialize(world, serializer)?;
-		
-		let mut query = world.query_filtered::<(&Transform, &flycam::Flycam), With<crate::debug_camera::MainCamera>>();
-		let cam = query.single(world).unwrap();
-		
-		let mut _struct = serializer.serialize_struct("SettingsFile", 2)?;
-		
-		{	
-			let render = <Res<RenderSettings> as MyWorldSerializer>::serialize(world)?;
-			_struct.serialize_field("render", render)?; // How do we take the result of a serde::Serialize and use it as a value for a field like this? (Normally we have to pass something that itself is serde::Serialize
-		}
-		{	
-			let main_cam = <crate::flycam::FlycamBundle as EntitySerializer>::serialize(cam, serializer).unwrap();
-			_struct.serialize_field("main_cam", main_cam)?;
-		}
-		
-		_struct.end()
-	}
-	fn deserialize<'de, D> (world: &mut World, deserializer: D) -> Result<(), D::Error>
-	where D: serde::Deserializer<'de> {
-		Ok(())
-	}
+fn load_json_value() -> serialization::JsonResult {
+	let json_str : Result<String, serialization::Error> = std::fs::read_to_string(SETTINGS_FILE)
+		.map_err(|e| e.into());
+	serde_json::from_str::<serde_json::Value>(&json_str?).map_err(|e| e.into())
 }
-
 // TODO: can we write this helper function to take in WorldSerializer directly?
-fn serialize_to_json_pretty_tabs(json: &serde_json::Value) -> Result<String> {
+fn serialize_to_json_pretty_tabs(json: &serde_json::Value) -> Result<String, crate::serialization::Error> {
 	let mut vec = Vec::with_capacity(1024);
 	let mut ser = serde_json::Serializer::with_formatter(&mut vec,
 		serde_json::ser::PrettyFormatter::with_indent(b"\t"));
 	
-	if let Err(e) = serde::Serialize::serialize(&json, &mut ser) {
-		warn!("{e:?}");
-		return Err(e.into());
-	}
+	serde::Serialize::serialize(&json, &mut ser)?;
 	
 	unsafe { // copied from serde_json::to_string_pretty
 		Ok(String::from_utf8_unchecked(vec))
@@ -107,79 +60,59 @@ fn serialize_to_json_pretty_tabs(json: &serde_json::Value) -> Result<String> {
 }
 
 pub fn save(world: &mut World) {
-	//let value = &world.serialize_lens::<SettingsFile>();
-	let mut query = world.query_filtered::<(&Transform, &flycam::Flycam), With<crate::debug_camera::MainCamera>>();
-	let cam = query.single(world).unwrap();
-	
-	let cam_json = <crate::flycam::FlycamBundle as EntitySerializer>::serialize(cam, serde_json::value::Serializer).unwrap();
-	let res_json = <Res<RenderSettings> as MyWorldSerializer>::serialize(world, serde_json::value::Serializer).unwrap();
-	
-	
-	let mut json = serde_json::json!({ "render": res_json, "main_cam": cam_json });
-	
-	// Important to version save files when releasing applications
-	json.as_object_mut().unwrap().shift_insert(0, "version".into(), "0.1".into());
-	
-	if let Ok(json_str) = serialize_to_json_pretty_tabs(&json) {
-		if std::fs::write(SETTINGS_FILE, json_str).is_ok() {
-			info!("Saved!");
-			return;
-		}
+	fn inner(world: &mut World) -> Result<(), crate::serialization::Error> {
+		let mut json = <SettingsFile as WorldSerializer>::serialize(world)?;
+		
+		// Important to version save files when releasing applications
+		json.as_object_mut().unwrap().shift_insert(0, "version".into(), "0.1".into());
+		
+		let json_str = serialize_to_json_pretty_tabs(&json)?;
+		std::fs::write(SETTINGS_FILE, json_str)?;
+		Ok(())
 	}
 	
-	warn!("Failed to save {SETTINGS_FILE}!");
+	if let Err(e) = inner(world) {
+		warn!("Failed to save {SETTINGS_FILE}!\n{:?}", e);
+		return;
+	}
+	info!("Saved {SETTINGS_FILE}!");
 }
 
 // Early load RenderSettings to allow backend selection before bevy is actually loaded and use loaded_json later
-#[derive(Clone)]
-pub struct LoadResult {
-	loaded_json: serde_json::Value,
-	pub render: RenderSettings,
+pub type LoadResult = (Option<serde_json::Value>, RenderSettings);
+
+pub fn early_load_settings() -> LoadResult {
+	let json = match load_json_value() {
+		Ok(val) => Some(val),
+		Err(e) => {
+			warn!("Failed to load {SETTINGS_FILE}!\n{:?}", e); // Need to report error early and skip later as error can't be cloned and we need to clone it for startup systems
+			None
+		},
+	};
+	
+	let render = if let Some(json) = &json {
+		serde::Deserialize::deserialize(&json["render"]).unwrap_or(RenderSettings::default())
+	}
+	else {
+		RenderSettings::default()
+	};
+	
+	(json, render)
 }
 
-pub fn early_load_settings() -> Option<LoadResult> {
-	if let Ok(json_str) = std::fs::read_to_string(SETTINGS_FILE) {
-		if let Ok(mut loaded_json) = serde_json::from_str::<serde_json::Value>(&json_str) {
-		
-			let render = serde_json::from_value::<RenderSettings>(loaded_json["render"].clone());
-			let render = render.unwrap_or(RenderSettings::default());
-			
-			info!("Early loaded {SETTINGS_FILE}!");
-			return LoadResult {
-				loaded_json, render
-			}.into();
-		}
-	}
-	
-	warn!("Failed to load {SETTINGS_FILE}!");
-	None
-}
 use crate::util::*;
-pub fn load_settings(world: &mut World, res: Option<LoadResult>) {
+pub fn load_settings(world: &mut World, json: Option<serde_json::Value>) {
 	world.insert_resource(RenderSettings::default()); // Never inserted anywhere else
 	
-	if let Some(res) = res {
-		//world.despawn_bound_objects::<SettingsFile>();
-		//world.deserialize_scope(|| {
-		//	let _ = serde_json::from_value::<InWorld<SettingsFile>>(res.loaded_json);
-		//	// TODO: FIX: Because how serde lens works, camera gets respawned from scratch, so either I serialize everything,
-		//	// despite it not making sense or I need to work around the fact that a bunch of components will be missing
-		//});
-		
-		let mut query = world.query_filtered::<(&mut Transform, &mut flycam::Flycam), With<crate::debug_camera::MainCamera>>();
-		let cam = query.single_mut(world).unwrap();
-		
-		let res = <crate::flycam::FlycamBundle as EntitySerializer>::deserialize(cam, &res.loaded_json["main_cam"]);
-		if let Err(e) = res {
-			error!("Error deserializing entity {} (skipping): {}", "main_cam", e); // TODO: will not tell us the component that has a missing field
-			// continiue loading
+	if let Some(json) = json {
+		if let Err(e) = <SettingsFile as WorldSerializer>::deserialize(world, &json) {
+			warn!("Failed to load {SETTINGS_FILE}!\n{:?}", e);
+			return;
 		}
-		
 		info!("Fully Loaded {SETTINGS_FILE}!");
 	}
 }
 
 pub fn load(world: &mut World) {
-	let res = early_load_settings();
-	load_settings(world, res);
+	load_settings(world, early_load_settings().0);
 }

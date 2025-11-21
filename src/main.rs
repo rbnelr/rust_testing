@@ -47,8 +47,7 @@ fn main() {
 	println!("Exe path: {:?}", std::env::current_exe().unwrap());
 	println!("Asset path: {:?}", asset_path);
 	
-	let settings = settings_file::early_load_settings();
-	let settings2 = settings.clone();
+	let (settings_json, render_settings) = settings_file::early_load_settings();
 	
 	app.add_plugins({
 		let mut plugins = DefaultPlugins
@@ -66,14 +65,13 @@ fn main() {
 		.set(RenderPlugin {
 			render_creation: settings::RenderCreation::Automatic({
 				let mut set = settings::WgpuSettings::default();
-				if let Some(s) = &settings {
-					set.backends = Some(Backends::from_comma_list(s.render.backends.as_str()));
-					
-					// Allow disabling validation layers since there seem to be bugs(?) in some part of bevy/wgpu?
-					// Unfortunately I'm unsure how to only disable them for vulkan, as backends still allows Bevy to select it on its own
-					if s.render.disable_validation_in_debug {
-						set.instance_flags = bevy::render::settings::InstanceFlags::empty();
-					}
+				
+				set.backends = Some(Backends::from_comma_list(render_settings.backends.as_str()));
+				
+				// Allow disabling validation layers since there seem to be bugs(?) in some part of bevy/wgpu?
+				// Unfortunately I'm unsure how to only disable them for vulkan, as backends still allows Bevy to select it on its own
+				if render_settings.disable_validation_in_debug {
+					set.instance_flags = bevy::render::settings::InstanceFlags::empty();
 				}
 				set
 			}),
@@ -107,7 +105,7 @@ fn main() {
 		startup,
 		spawn_animated_gltf,
 		(move |world: &mut World| {
-			settings_file::load_settings(world, settings.clone());
+			settings_file::load_settings(world, settings_json.clone());
 		}).after(startup)
 	));
 	

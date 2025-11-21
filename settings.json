@@ -1,41 +1,51 @@
 {
 	"version": "0.1",
+	"window": {
+		"fullscreen": false,
+		"fullscreen_borderless": true,
+		"vsync": true
+	},
 	"render": {
 		"backends": "vk, dx12, gl",
 		"disable_validation_in_debug": true
 	},
-	"main_cam": {
-		"transform": {
-			"translation": [
-				-2.0,
-				2.5,
-				5.0
-			],
-			"rotation": [
-				-0.21171875298023224,
-				-0.1846596747636795,
-				-0.04077330604195595,
-				0.9588605165481567
-			],
-			"scale": [
-				1.0,
-				1.0,
-				1.0
-			]
+	"nested": {
+		"debug_cam": {
+			"viewing_debug_cam": false
 		},
-		"flycam": {
-			"move_planar": true,
-			"vfov_multiplied_sensitivity": true,
-			"mouse_sens": 0.0020000000949949026,
-			"default_vfov": 1.2217304706573486,
-			"vfov_target": 1.2217304706573486,
-			"vfov_smooth": 25.0,
-			"zoom_speed": 1.5,
-			"speed": 4.0,
-			"base_speed": 4.0,
-			"max_speed": 1000000.0,
-			"speedup_factor": 2.0,
-			"fast_multiplier": 4.0
+		"main_cam": {
+			"Transform": {
+				"translation": [
+					-1.6684858798980713,
+					2.5,
+					4.04522180557251
+				],
+				"rotation": [
+					-0.11284501105546951,
+					-0.21753737330436707,
+					-0.0253287423402071,
+					0.9691758751869202
+				],
+				"scale": [
+					1.0,
+					1.0,
+					1.0
+				]
+			},
+			"Flycam": {
+				"move_planar": true,
+				"vfov_multiplied_sensitivity": true,
+				"mouse_sens": 0.0020000000949949026,
+				"default_vfov": 1.2217304706573486,
+				"vfov_target": 1.2217304706573486,
+				"vfov_smooth": 25.0,
+				"zoom_speed": 1.5,
+				"speed": 4.0,
+				"base_speed": 4.0,
+				"max_speed": 1000000.0,
+				"speedup_factor": 2.0,
+				"fast_multiplier": 4.0
+			}
 		}
 	}
 }

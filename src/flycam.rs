@@ -166,9 +166,9 @@ fn mouselook(
 		time: &Res<Time>,
 		keyboard: &Res<ButtonInput<KeyCode>>,
 		mouse: &Res<ButtonInput<MouseButton>>,
-		mut mouse_motion: &mut MessageReader<MouseMotion>,
+		mouse_motion: &mut MessageReader<MouseMotion>,
 		cursor_options: &CursorOptions,
-		transf: &mut Transform, flycam: &Flycam, proj: &Projection) {
+		transf: &mut Transform, flycam: &mut Flycam, proj: &mut Projection) {
 	
 	let pitch_min = (-90.0_f32 + 5.0).to_radians();
 	let pitch_max = ( 90.0_f32 - 5.0).to_radians();
@@ -177,7 +177,7 @@ fn mouselook(
 	let (mut yaw, mut pitch, mut roll) = transf.rotation.to_euler(euler);
 	
 	if mouse.pressed(MOUSELOOK_BTN) || cursor_options.grab_mode != CursorGrabMode::None {
-		let sens = get_mouselook_sensitivity(flycam, proj);
+		let sens = get_mouselook_sensitivity(&flycam, &proj);
 		for event in mouse_motion.read() {
 			// NOTE: For this camera it makes sense to scale mouselook with fov
 			// This is not always the case but would fit an FPS games
@@ -274,8 +274,8 @@ fn update_camera(
 	
 	for (mut transf, mut flycam, cam, mut proj) in &mut query {
 		if cam.is_active { // disabling rendering also disables controls
-			zoom(&time, &keyboard, &mut mouse_wheel, &mut flycam, proj.as_mut());
-			mouselook(&time, &keyboard, &mouse, &mut mouse_motion, &cursor_opt, &mut transf, &mut flycam, &proj);
+			zoom(&time, &keyboard, &mut mouse_wheel, &mut flycam, &mut proj);
+			mouselook(&time, &keyboard, &mouse, &mut mouse_motion, &cursor_opt, &mut transf, &mut flycam, &mut proj);
 			movement(&time, &keyboard, &mut transf, &mut flycam);
 			// NOTE: controlling multiple cameras does not work since MessageReaders eat input
 		}
