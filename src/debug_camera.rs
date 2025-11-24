@@ -3,6 +3,16 @@ use crate::flycam::Flycam;
 use crate::phases::Phase;
 use serde::*;
 
+/*
+	Allows a secondary debug camera to exists which can be swapped to via hotkey
+	TODO: visualize main camera when in debug camera mode
+	TODO: potentially allow debug camera to be locked but still viewed, and switch over camera control to main camera
+	       useful for viewing debugging movement from third person in otherwise first person game
+	TODO: view debug cam but use culling and or LOD from main camera, to visualize those
+	TODO: all of these would also benefit from splitscreen/picture in picture mode,
+	      potentially could even use egui to create a mode where main/debug cam views become egui windows that can be moved and docked as desired (viewing_debug_cam = false switches back to just one main view)
+*/
+
 pub struct DebugCameraPlugin;
 impl Plugin for DebugCameraPlugin {
 	fn build(&self, app: &mut App) {
@@ -17,7 +27,7 @@ impl Plugin for DebugCameraPlugin {
 #[derive(Component, Serialize, Deserialize, Reflect)]
 pub struct MainCamera;
 
-#[derive(Component)]
+#[derive(Component, Serialize, Deserialize, Reflect)]
 pub struct DebugCamera;
 
 #[derive(Resource, Default, Reflect, Serialize, Deserialize)]

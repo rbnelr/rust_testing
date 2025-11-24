@@ -6,9 +6,11 @@ mod serialization;
 mod settings_file;
 mod egui_histogram;
 mod app_control;
+mod gizmos;
 mod debug_camera;
 mod flycam;
 mod particles;
+mod many_cubes;
 
 use bevy::{
 	prelude::*,
@@ -18,17 +20,16 @@ use bevy::{
 	render::*,
 	render::settings::Backends,
 	camera::*,
+	camera::visibility::RenderLayers,
 	scene::SceneInstanceReady,
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::f32::consts::*;
 
-use bevy_egui::*;
-use bevy_inspector_egui::prelude::*;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use debug_camera::{DebugCamera, MainCamera};
 use flycam::FlycamBundle;
+use phases::*;
 
 fn main() {
 	let mut app = App::new();
@@ -84,22 +85,16 @@ fn main() {
 		
 		plugins
 	});
-	app.insert_resource(EguiGlobalSettings {
-		auto_create_primary_context: false,
-		..default()
-	});
-	app.add_plugins((
-		EguiPlugin::default(),
-		WorldInspectorPlugin::new(),
-	));
 	app.add_plugins((
 		app_control::AppControlPlugin,
 		debug_camera::DebugCameraPlugin,
+		gizmos::GizmosPlugin,
 		flycam::FlycamPlugin,
 		particles::ParticlePlugin,
+		many_cubes::ManyCubesPlugin,
 	));
 	
-	app.add_observer(do_very_specific_thing_to_object);
+	app.add_observer(init_wiggly_cylinder);
 	
 	app.add_systems(Startup, (
 		startup,
@@ -121,7 +116,8 @@ fn main() {
 fn startup(
 	mut commands: Commands,
 	mut meshes: ResMut<Assets<Mesh>>,
-	mut materials: ResMut<Assets<StandardMaterial>>
+	mut materials: ResMut<Assets<StandardMaterial>>,
+	asset_server: Res<AssetServer>,
 ) {
 	let mut rng = ChaCha8Rng::seed_from_u64(19878367467713);
 	let cube_mesh = meshes.add(Cuboid::new(0.5, 0.5, 0.5));
@@ -132,8 +128,9 @@ fn startup(
 	
 	// Overlay camera for Egui, as egui does not handle switching between main/debug camera
 	commands.spawn((
-		PrimaryEguiContext,
-		Camera3d::default(),
+		bevy_egui::PrimaryEguiContext,
+		Camera2d::default(),
+		RenderLayers::from_layers(&[31]), // Avoid entities accidentally rendering twice (NOTE: entities by default (without RenderLayers component) on layer 0)
 		Camera {
 			order: 10,
 			output_mode: CameraOutputMode::Write {
@@ -199,22 +196,34 @@ fn startup(
 		})
 		.take(10),
 	);
+	
+	commands.spawn((
+		Transform { translation: Vec3::new(5.0, 0.0, 0.0), ..default() },
+		SceneRoot(asset_server.load("basic_assets.glb#Scene0")),
+	));
 }
 
 #[derive(Component)]
-struct ThisVerySpecificObject();
+struct WigglyCylinderScene;
+#[derive(Component)]
+struct WigglyCylinder;
 
 fn spawn_animated_gltf(mut commands: Commands, asset_server: Res<AssetServer>) {
 	commands.spawn((
 		SceneRoot(asset_server.load("rig.glb#Scene0")),
-		ThisVerySpecificObject()
+		WigglyCylinderScene,
 	));
 }
-fn do_very_specific_thing_to_object(scene_ready: On<SceneInstanceReady>,
+fn init_wiggly_cylinder(scene_ready: On<SceneInstanceReady>,
 		q_children: Query<&Children>,
+		mut q_filter: Query<(), With<WigglyCylinderScene>>,
 		mut q_skinned_mesh: Query<(&bevy::mesh::skinning::SkinnedMesh, &mut MeshMaterial3d<StandardMaterial>)>,
 		mut materials: ResMut<Assets<StandardMaterial>>,
 		mut commands: Commands) {
+	if q_filter.get(scene_ready.entity).is_err() { return }
+	
+	println!("init_wiggly_cylinder() {}", q_filter.count());
+	
 	let material = materials.add(Color::srgb_u8(255, 144, 50));
 	
 	let scene_root = scene_ready.entity;
@@ -222,9 +231,10 @@ fn do_very_specific_thing_to_object(scene_ready: On<SceneInstanceReady>,
 		if let Ok((skinned_mesh, mut mat)) = q_skinned_mesh.get_mut(entity) {
 			*mat = MeshMaterial3d(material.clone());
 			
-			commands.entity(skinned_mesh.joints[2]).insert(
-				particles::ParticleEmitter::new(0.2)
-			);
+			commands.entity(entity).insert(WigglyCylinder);
+			commands.entity(skinned_mesh.joints[2]).insert((
+				particles::ParticleEmitter::new(0.2),
+			));
 		}
 	}
 }
@@ -237,7 +247,7 @@ fn spin_camera(time: Res<Time>, mut query: Query<&mut Transform, With<Camera3d>>
 
 fn update_animation(
 	time: Res<Time>,
-	animated_entities: Query<&bevy::mesh::skinning::SkinnedMesh>,
+	animated_entities: Query<&bevy::mesh::skinning::SkinnedMesh, With<WigglyCylinder>>,
 	mut transform_query: Query<&mut Transform>,
 ) {
 	for animated in &animated_entities {

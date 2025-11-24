@@ -32,6 +32,7 @@ struct Nested;
 world_serializer!(Nested,
 	debug_cam: WorldRes<crate::debug_camera::DebugCameraState>,
 	main_cam: WorldSingleEntity<FlycamBundle, With<crate::debug_camera::MainCamera>>,
+	many_cubes: WorldRes<crate::many_cubes::ManyCubesSystemSettings>,
 );
 
 struct SettingsFile;
@@ -90,12 +91,9 @@ pub fn early_load_settings() -> LoadResult {
 		},
 	};
 	
-	let render = if let Some(json) = &json {
-		serde::Deserialize::deserialize(&json["render"]).unwrap_or(RenderSettings::default())
-	}
-	else {
-		RenderSettings::default()
-	};
+	let render: RenderSettings = json.as_ref()
+		.and_then(|j| serde::Deserialize::deserialize(&j["render"]).ok())
+		.unwrap_or_default();
 	
 	(json, render)
 }

@@ -1,7 +1,7 @@
-use std::f32::INFINITY;
 use bevy::prelude::*;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use std::f32::INFINITY;
 use crate::app_control::WindowSettings;
 use crate::flycam::Flycam;
 
@@ -10,7 +10,7 @@ pub struct ParticlePlugin;
 impl Plugin for ParticlePlugin {
 	fn build(&self, app: &mut App) {
 		app
-			.add_systems(Startup, setup_data)
+			.add_systems(Startup, startup)
 			.add_systems(Update, spawn_particles)
 			.add_systems(Update, update_particles.after(spawn_particles));
 	}
@@ -22,7 +22,7 @@ struct ParticleSystem {
 	material: Handle<StandardMaterial>,
 	rng: ChaCha8Rng,
 }
-fn setup_data (
+fn startup (
 	mut commands: Commands,
 	mut meshes: ResMut<Assets<Mesh>>,
 	mut materials: ResMut<Assets<StandardMaterial>>
@@ -30,11 +30,10 @@ fn setup_data (
 	let mesh = meshes.add(Cuboid::new(0.1, 0.1, 0.1));
 	let material = materials.add(Color::srgb_u8(60, 255, 70));
 	
-	let rng = ChaCha8Rng::seed_from_u64(19878367467711);
+	let rng = ChaCha8Rng::seed_from_u64(10);
 	
 	commands.insert_resource(ParticleSystem{ mesh, material, rng });
 }
-
 
 #[derive(Component)]
 pub struct ParticleEmitter {
@@ -56,15 +55,20 @@ struct Particle {
 fn spawn_particles(
 		time: Res<Time>,
 		spawners: Query<(&mut ParticleEmitter, &GlobalTransform)>,
+		particles: Query<(Entity, &mut Particle, &mut Transform)>,
 		mut sys: ResMut<ParticleSystem>,
 		mut commands: Commands) {
 	let emit_speed: f32 = 7.0;
 	let speed_variation: f32 = 1.0;
 	
+	let mut count = particles.count();
+	let max_count = 1000;
+	
 	for (mut spawner, transform) in spawners {
 		spawner.time_since_last_spawn += time.delta_secs();
-		if spawner.time_since_last_spawn >= spawner.spawn_period {
+		if spawner.time_since_last_spawn >= spawner.spawn_period && count < max_count {
 			spawner.time_since_last_spawn -= spawner.spawn_period;
+			count += 1;
 			
 			let var = Vec3::new(sys.rng.random_range(-1.0..1.0),
 			                          sys.rng.random_range(-1.0..1.0),
@@ -76,7 +80,7 @@ fn spawn_particles(
 				Transform {
 					translation: transform.translation(),
 					rotation: transform.rotation(),
-					..Default::default()
+					..default()
 				},
 				Particle {
 					velocity: -transform.forward() * emit_speed + var * speed_variation,

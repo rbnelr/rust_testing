@@ -3,10 +3,23 @@ use bevy::ecs::system::{SystemState, RunSystemOnce};
 use bevy::window::{CursorIcon, CursorOptions, PrimaryWindow, WindowMode, PresentMode};
 use bevy_egui::*;
 use egui::{Ui, RichText, Color32};
+use bevy_inspector_egui::prelude::*;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use crate::phases::Phase;
 use crate::settings_file;
 use serde::*;
 
+/*
+	Handles fullscreen and vsync switching, and load save via hotkeys
+	Persists fullscreen and vsync through serialization
+	Shows the main app control gui (fullscreen, vsync, Quit and setting.json Load/save)
+	TODO: I'd like to persist the position and potentially docking state of the OS window
+	 -Ideally OSes would allows you to do this
+	 -Restroring position might be easy, but have not found a good way to do this in general as it depends on OS,
+	  and things like preserving docking are not exposed by default(?)
+*/
+
+	
 pub struct AppControlPlugin;
 impl Plugin for AppControlPlugin {
 	fn build(&self, app: &mut App) {
@@ -16,7 +29,20 @@ impl Plugin for AppControlPlugin {
 			window_control.after(save_load_controls)
 		).in_set(Phase::Start));
 		app.add_systems(EguiPrimaryContextPass, main_ui); //.in_set(Phase::Windowing) execute UI first?);
+		
+		app.insert_resource(EguiGlobalSettings {
+			auto_create_primary_context: false,
+			..default()
+		});
+		app.add_plugins((
+			EguiPlugin::default(),
+			WorldInspectorPlugin::new().run_if(world_inspector_plugin_condition),
+		));
 	}
+}
+
+pub fn world_inspector_plugin_condition(settings: Res<WindowSettings>) -> bool {
+	settings.show_egui_world_inspector
 }
 
 #[derive(Resource, Reflect, Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -31,6 +57,12 @@ pub struct WindowSettings {
 	pub fullscreen: bool,
 	pub fullscreen_borderless: bool,
 	pub vsync: bool,
+	
+	// TODO: a lot of these global settings should be in their own "control panel" resources, but for now this is easier
+	// but right now I don't want dozens of egui windows, so TODO: figure out if egui allows for docking windows to each other in a satisfactory way (serialize, dock as tab, or as vertical stacked?)
+	
+	pub show_egui_world_inspector: bool,
+	pub vis_aabb: bool,
 }
 impl Default for WindowSettings {
 	fn default() -> Self {
@@ -38,6 +70,8 @@ impl Default for WindowSettings {
 			fullscreen: false,
 			fullscreen_borderless: true,
 			vsync: true,
+			show_egui_world_inspector: false,
+			vis_aabb: false,
 		}
 	}
 }
@@ -45,7 +79,7 @@ impl Default for WindowSettings {
 pub const APP_NAME : &str = "Bevy Test Project";
 
 impl WindowSettings {
-	fn update(mut window: Mut<Window>, mut settings: ResMut<WindowSettings>) {
+	fn update(mut window: Mut<Window>, mut settings: &ResMut<WindowSettings>) {
 		if settings.is_changed() {
 			//println!("WindowSettings Change");
 			window.mode = match (settings.fullscreen, settings.fullscreen_borderless) {
@@ -64,7 +98,8 @@ impl WindowSettings {
 fn window_control(
 	keyboard: Res<ButtonInput<KeyCode>>,
 	window: Single<&mut Window>,
-	mut settings: ResMut<WindowSettings>
+	mut settings: ResMut<WindowSettings>,
+	mut gizmo_config_store: ResMut<GizmoConfigStore>,
 ) {
 	if keyboard.just_pressed(KeyCode::F11) ||
 		(keyboard.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]) && keyboard.just_pressed(KeyCode::Enter)) {
@@ -72,7 +107,9 @@ fn window_control(
 		settings.fullscreen = !settings.fullscreen;
 	}
 	
-	WindowSettings::update(window.into_inner(), settings);
+	WindowSettings::update(window.into_inner(), &settings);
+	
+	gizmo_config_store.config_mut::<AabbGizmoConfigGroup>().1.draw_all = settings.vis_aabb;
 }
 
 pub fn save_load_controls(
@@ -111,7 +148,7 @@ fn main_ui(
 	let mut do_save = false;
 	
 	egui::Window::new("Main").show(egui_context.get_mut(), |ui| {
-		
+	
 		let (
 			time,
 			mut window_settings,
@@ -133,24 +170,31 @@ fn main_ui(
 				}
 			});
 		});
-			
-		if ws != *window_settings { // for change-detection
-			*window_settings = ws;
-		}
 		
 		frametimes.gui(ui, time);
 		
 		ui.add_space(6.0);
 		
 		ui.horizontal(|ui| {
-			ui.label("settings.json:");
-			if ui.button("Load [;]").clicked() {
-				do_load = true;
-			}
-			if ui.button("Save [']").clicked() {
-				do_save = true;
-			}
+			
+			ui.checkbox(&mut ws.show_egui_world_inspector, "World Inspector");
+			
+			ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+				if ui.button("Save [']").clicked() {
+					do_save = true;
+				}
+				if ui.button("Load [;]").clicked() {
+					do_load = true;
+				}
+				ui.label("settings.json:");
+			});
 		});
+		
+		ui.checkbox(&mut ws.vis_aabb, "Vis AABB");
+	
+		if ws != *window_settings { // for change-detection
+			*window_settings = ws;
+		}
 	});
 	
 	if do_load {

@@ -3,7 +3,9 @@
 	"window": {
 		"fullscreen": false,
 		"fullscreen_borderless": true,
-		"vsync": true
+		"vsync": true,
+		"show_egui_world_inspector": false,
+		"vis_aabb": false
 	},
 	"render": {
 		"backends": "vk, dx12, gl",
@@ -16,15 +18,15 @@
 		"main_cam": {
 			"Transform": {
 				"translation": [
-					-1.6684858798980713,
+					-2.0,
 					2.5,
-					4.04522180557251
+					5.0
 				],
 				"rotation": [
-					-0.11284501105546951,
-					-0.21753737330436707,
-					-0.0253287423402071,
-					0.9691758751869202
+					-0.21171875298023224,
+					-0.1846596747636795,
+					-0.04077330604195595,
+					0.9588605165481567
 				],
 				"scale": [
 					1.0,
@@ -46,6 +48,12 @@
 				"speedup_factor": 2.0,
 				"fast_multiplier": 4.0
 			}
+		},
+		"many_cubes": {
+			"random_material": true,
+			"rng_seed": 1,
+			"count": 500,
+			"spacing": 0.25
 		}
 	}
 }
