@@ -85,27 +85,22 @@ fn main() {
 		
 		plugins
 	});
+	
 	app.add_plugins((
 		app_control::AppControlPlugin,
 		debug_camera::DebugCameraPlugin,
 		gizmos::GizmosPlugin,
 		flycam::FlycamPlugin,
 		particles::ParticlePlugin,
+		ParticleExamplePlugin,
 		many_cubes::ManyCubesPlugin,
 	));
 	
-	app.add_observer(init_wiggly_cylinder);
-	
 	app.add_systems(Startup, (
 		startup,
-		spawn_animated_gltf,
 		(move |world: &mut World| {
 			settings_file::load_settings(world, settings_json.clone());
 		}).after(startup)
-	));
-	
-	app.add_systems(Update, (
-		update_animation,
 	));
 	
 	phases::update_schedule_configs(&mut app);
@@ -129,8 +124,8 @@ fn startup(
 	// Overlay camera for Egui, as egui does not handle switching between main/debug camera
 	commands.spawn((
 		bevy_egui::PrimaryEguiContext,
-		Camera2d::default(),
-		RenderLayers::from_layers(&[31]), // Avoid entities accidentally rendering twice (NOTE: entities by default (without RenderLayers component) on layer 0)
+		Camera3d::default(),
+		RenderLayers::from_layers(&[UI_LAYER]), // Avoid entities accidentally rendering twice (NOTE: entities by default (without RenderLayers component) on layer 0)
 		Camera {
 			order: 10,
 			output_mode: CameraOutputMode::Write {
@@ -143,12 +138,17 @@ fn startup(
 		Name::new("EguiCamera"),
 	));
 	
+	let bloom = bevy::post_process::bloom::Bloom {
+		prefilter: bevy::post_process::bloom::BloomPrefilter { threshold: 1.2, threshold_softness: 0.5 },
+		..bevy::post_process::bloom::Bloom::NATURAL
+	};
+	
 	commands.spawn((
 		MainCamera,
 		flycam::FlycamBundle::new( Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
 		bevy::render::view::Hdr,
 		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
-		bevy::post_process::bloom::Bloom::NATURAL,
+		bloom.clone(),
 		Name::new("MainCamera"),
 			Mesh3d(cube_mesh.clone()),
 			MeshMaterial3d(red.clone()), // just for debugging
@@ -158,7 +158,7 @@ fn startup(
 		flycam::FlycamBundle::new( Transform::from_xyz(2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y) ),
 		bevy::render::view::Hdr,
 		bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
-		bevy::post_process::bloom::Bloom::NATURAL,
+		bloom,
 		Name::new("DebugFlycam"),
 			Mesh3d(cube_mesh.clone()),
 			MeshMaterial3d(red.clone()), // just for debugging
@@ -198,15 +198,64 @@ fn startup(
 	);
 	
 	commands.spawn((
-		Transform { translation: Vec3::new(5.0, 0.0, 0.0), ..default() },
+		Transform { translation: Vec3::new(-10.0, 0.0, -20.0), ..default() },
 		SceneRoot(asset_server.load("basic_assets.glb#Scene0")),
 	));
+}
+
+use bevy_egui::*;
+use serde::*;
+
+pub struct ParticleExamplePlugin;
+impl Plugin for ParticleExamplePlugin {
+	fn build(&self, app: &mut App) {
+		fn is_active (set: Res<ParticlesSettings>) -> bool { set.active }
+		
+		app.add_observer(init_wiggly_cylinder);
+		app.insert_resource(ParticlesSettings { active: true });
+		app.add_systems(Startup, spawn_animated_gltf);
+		app.add_systems(EguiPrimaryContextPass, particles_ui);
+		app.add_systems(Update, (
+			update_animation.run_if(is_active),
+		));
+	}
+}
+
+#[derive(Resource, Reflect, Serialize, Deserialize)]
+#[reflect(Resource)]
+pub struct ParticlesSettings {
+	active: bool,
+}
+fn particles_ui(
+		mut egui: Single<&mut EguiContext, With<PrimaryEguiContext>>,
+		mut set: ResMut<ParticlesSettings>,
+		mut spawner: Query<Entity, With<WigglyCylinderTip>>,
+		mut commands: Commands) -> Result {
+	egui::Window::new("Particles").show(egui.get_mut(), |ui| {
+		ui.checkbox(&mut set.active, "active");
+	});
+	
+	if set.active {
+		for s in spawner {
+			commands.entity(s).insert((
+				particles::ParticleEmitter::new(0.2),
+			));
+		}
+	} else {
+		for s in spawner {
+			commands.entity(s).remove::<particles::ParticleEmitter>();
+		}
+	}
+	
+	Ok(())
 }
 
 #[derive(Component)]
 struct WigglyCylinderScene;
 #[derive(Component)]
-struct WigglyCylinder;
+struct WigglyCylinderSkinnedMesh;
+#[derive(Component)]
+struct WigglyCylinderTip;
 
 fn spawn_animated_gltf(mut commands: Commands, asset_server: Res<AssetServer>) {
 	commands.spawn((
@@ -231,23 +280,18 @@ fn init_wiggly_cylinder(scene_ready: On<SceneInstanceReady>,
 		if let Ok((skinned_mesh, mut mat)) = q_skinned_mesh.get_mut(entity) {
 			*mat = MeshMaterial3d(material.clone());
 			
-			commands.entity(entity).insert(WigglyCylinder);
+			commands.entity(entity).insert(WigglyCylinderSkinnedMesh);
 			commands.entity(skinned_mesh.joints[2]).insert((
 				particles::ParticleEmitter::new(0.2),
+				WigglyCylinderTip,
 			));
 		}
 	}
 }
 
-fn spin_camera(time: Res<Time>, mut query: Query<&mut Transform, With<Camera3d>>) {
-	for mut transf in &mut query {
-		transf.rotate_around(Vec3::ZERO, Quat::from_rotation_y(1.0*time.delta_secs()));
-	}
-}
-
 fn update_animation(
 	time: Res<Time>,
-	animated_entities: Query<&bevy::mesh::skinning::SkinnedMesh, With<WigglyCylinder>>,
+	animated_entities: Query<&bevy::mesh::skinning::SkinnedMesh, With<WigglyCylinderSkinnedMesh>>,
 	mut transform_query: Query<&mut Transform>,
 ) {
 	for animated in &animated_entities {

@@ -1,17 +1,20 @@
+use core::f32;
+
 use bevy::prelude::*;
 use rand::{Rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use serde::*;
 use bevy_egui::*;
 use egui::{Ui, RichText, Color32};
+use crate::util::*;
 
 pub struct ManyCubesPlugin;
 
 impl Plugin for ManyCubesPlugin {
 	fn build(&self, app: &mut App) {
-		app
-			.add_systems(Startup, startup)
-			.add_systems(Update, respawn);
+		app.add_systems(Startup, startup);
+		app.add_systems(Update, respawn);
+		app.add_systems(Update, update_cubes.run_if(|set: Res<ManyCubesSystemSettings>| set.spinning));
 		app.add_systems(EguiPrimaryContextPass, ui);
 	}
 }
@@ -30,6 +33,7 @@ pub struct ManyCubesSystemSettings {
 	rng_seed: u32,
 	count: u32,
 	spacing: f32,
+	spinning: bool,
 }
 
 fn ui(mut egui: Single<&mut EguiContext, With<PrimaryEguiContext>>, mut set: ResMut<ManyCubesSystemSettings>) -> Result {
@@ -39,6 +43,7 @@ fn ui(mut egui: Single<&mut EguiContext, With<PrimaryEguiContext>>, mut set: Res
 		ui.add(egui::DragValue::new(&mut s.rng_seed));
 		ui.add(egui::Slider::new(&mut s.count, 0..=100000));
 		ui.add(egui::DragValue::new(&mut s.spacing).speed(0.1));
+		ui.checkbox(&mut s.spinning, "spinning");
 	});
 	if s != *set { *set = s; }
 	Ok(())
@@ -72,17 +77,8 @@ fn startup (
 		rng_seed: 1,
 		count: 500,
 		spacing: 0.25,
+		spinning: true,
 	});
-}
-
-pub trait RngExt {
-	fn random_item<'a, T> (&mut self, items: &'a [T]) -> &'a T;
-}
-impl<R> RngExt for R where R: rand::Rng {
-	fn random_item<'a, T> (&mut self, items: &'a [T]) -> &'a T {
-		let i = self.random_range(..items.len());
-		&items[i]
-	}
 }
 
 fn respawn(
@@ -123,5 +119,20 @@ fn respawn(
 				bevy_camera::visibility::NoFrustumCulling,
 			));
 		}
+	}
+}
+
+fn update_cubes(mut time: Res<Time>, cubes: Query<&mut Transform, With<ManyCubesCube>>) {
+	let _span = info_span!("update_cubes").entered();
+	
+	let speed0 : f32 = 45.0_f32.to_radians() * time.delta_secs();
+	let speed1 : f32 = 360.0_f32.to_radians() * time.delta_secs();
+	
+	let mut rng = ChaCha8Rng::seed_from_u64(20);
+	for mut transf in cubes {
+		let speed = rng.random_range(speed0..speed1);
+		let axis = rng.random_direction3d();
+		
+		transf.rotate(Quat::from_axis_angle(axis, speed));
 	}
 }

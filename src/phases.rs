@@ -20,3 +20,6 @@ pub fn update_schedule_configs(app: &mut App) {
 			.after(Phase::Gameplay),
 	));
 }
+
+pub const MAIN_LAYER: usize = 0;
+pub const UI_LAYER: usize = 1;

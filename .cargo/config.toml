@@ -1,0 +1,9 @@
+[alias]
+# dev
+dev = "run"
+
+# release
+rel = "run --release --no-default-features --features release_build"
+
+# profiling
+prof = "run --release --no-default-features --features profiling_build"

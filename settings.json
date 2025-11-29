@@ -52,8 +52,9 @@
 		"many_cubes": {
 			"random_material": true,
 			"rng_seed": 1,
-			"count": 500,
-			"spacing": 0.25
+			"count": 50000,
+			"spacing": 0.4,
+			"spinning": true
 		}
 	}
 }

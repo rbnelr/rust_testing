@@ -3,10 +3,26 @@ name = "rust_bevy_test"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["dev_build"]
+
+dev_build = [
+	"bevy/dynamic_linking",
+]
+release_build = [
+	#no extra features
+]
+profiling_build = [
+	"bevy/trace",
+	"bevy/trace_tracy",
+]
+
 [dependencies]
-bevy = { version = "0.17.2", features = ["serialize", "dynamic_linking"] } # dev
+bevy = { version = "0.17.2", features = ["serialize"] }
+
+#bevy = { version = "0.17.2", features = ["serialize", "dynamic_linking"] } # dev
 #bevy = { version = "0.17.2", features = ["serialize"] } # normal release
-#bevy = { version = "0.17.2", features = ["serialize", "trace"] }
+#bevy = { version = "0.17.2", features = ["serialize", "trace"] } # for gpu debugging (nsight) use, but currently it seems there are no gpu debug markers, TODO: how?
 #bevy = { version = "0.17.2", features = ["serialize", "trace", "trace_tracy"] } # profiling
 
 #tracing-tracy = { version = "0.11.4", default-features = false, features = [
